@@ -70,6 +70,9 @@ void App::OnLaunched(Windows::ApplicationModel::Activation::LaunchActivatedEvent
 		DebugSettings->EnableFrameRateCounter = true;
 	}
 #endif
+	// Layout scaling must be selected before the Frame and page visual tree are
+	// created. Xbox otherwise enlarges every XAML element for ten-foot UI use.
+	ConfigureWindowBounds();
 
 	auto rootFrame = dynamic_cast<Frame^>(Window::Current->Content);
 
@@ -107,33 +110,26 @@ void App::OnLaunched(Windows::ApplicationModel::Activation::LaunchActivatedEvent
 	
 	// Verifique se a janela atual está ativa
 	Window::Current->Activate();
-	EnterFullScreen();
 }
 
-void App::EnterFullScreen()
+void App::ConfigureWindowBounds()
 {
 	try
 	{
-		auto view = ApplicationView::GetForCurrentView();
 		if (!IsXboxDevice())
-		{
-			// Full-screen startup is an Xbox presentation policy. Desktop UWP must
-			// retain the normal resizable window selected by Windows.
-			if (view->IsFullScreenMode)
-				view->ExitFullScreenMode();
 			return;
-		}
-		// Xbox normally reserves a 5% TV-safe margin on each side for XAML. Use the
-		// CoreWindow bounds so the host, command bar and SwapChainPanel fill the
-		// complete display instead of rendering as a centered 1728x972 surface.
+		// Use desktop-sized effective pixels on Xbox. This is the platform API
+		// specifically provided for disabling Xbox's automatic XAML enlargement;
+		// it has no effect on desktop devices.
+		ApplicationViewScaling::TrySetDisableLayoutScaling(true);
+		auto view = ApplicationView::GetForCurrentView();
+		// Xbox already presents UWP applications fullscreen. Select only the
+		// CoreWindow bounds and never enter, exit, or toggle fullscreen mode.
 		view->SetDesiredBoundsMode(ApplicationViewBoundsMode::UseCoreWindow);
-		if (!view->IsFullScreenMode)
-			view->TryEnterFullScreenMode();
 	}
 	catch (Platform::Exception^)
 	{
-		// Some desktop/window-management policies may reject the request. The app
-		// remains usable with the bounds selected by the system in that case.
+		// The app remains usable with the bounds selected by the system.
 	}
 }
 /// <summary>
@@ -162,7 +158,7 @@ void App::OnResuming(Object ^sender, Object ^args)
 	(void) args; // Parâmetro não usado
 
 	m_directXPage->LoadInternalState(ApplicationData::Current->LocalSettings->Values);
-	EnterFullScreen();
+	ConfigureWindowBounds();
 }
 
 /// <summary>

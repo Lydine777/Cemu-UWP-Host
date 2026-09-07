@@ -66,7 +66,6 @@ struct LocalInstallScanResult
 	uint32_t graphicPacksImported{};
 	uint32_t graphicPackFailures{};
 	uint32_t graphicPacksAlreadyProcessed{};
-	uint32_t enabledGraphicPacks{};
 	std::vector<LocalGameFile> localGameFiles;
 };
 
@@ -687,30 +686,16 @@ void DirectXPage::DownloadGraphicPacks_Click(Platform::Object^, RoutedEventArgs^
 	SetLibraryActionsEnabled(false);
 	startButton->IsEnabled = false;
 	launchStatus->Text = "Downloading Graphic Packs...";
-	std::vector<uint64_t> titleIds;
-	for (const auto& title : m_installedTitles)
-	{
-		if (title.localGamePath.empty())
-			titleIds.push_back(title.titleId);
-	}
 	const auto main = m_main;
 	Platform::WeakReference weakThis(this);
-	create_task([main, titleIds]()
+	create_task([main]()
 	{
 		uint32_t downloaded{};
 		bool alreadyCurrent{};
 		if (!main || !main->DownloadGraphicPacks(&downloaded, &alreadyCurrent))
-			return std::tuple<bool, bool, uint32_t, uint32_t>{ false, false, 0, 0 };
-		uint32_t enabled{};
-		for (const auto titleId : titleIds)
-		{
-			uint32_t affected{};
-			if (main->SetGraphicPacksEnabledForTitle(titleId, true, &affected))
-				enabled += affected;
-		}
-		return std::tuple<bool, bool, uint32_t, uint32_t>{
-			true, alreadyCurrent, downloaded, enabled };
-	}).then([weakThis](std::tuple<bool, bool, uint32_t, uint32_t> result)
+			return std::tuple<bool, bool, uint32_t>{ false, false, 0 };
+		return std::tuple<bool, bool, uint32_t>{true, alreadyCurrent, downloaded};
+	}).then([weakThis](std::tuple<bool, bool, uint32_t> result)
 	{
 		auto page = weakThis.Resolve<DirectXPage>();
 		if (!page) return;
@@ -720,7 +705,7 @@ void DirectXPage::DownloadGraphicPacks_Click(Platform::Object^, RoutedEventArgs^
 			page->SetLibraryActionsEnabled(true);
 			page->launchStatus->Text = "Failed to download Graphic Packs; see Help and errors";
 			page->SetTabsVisible(true);
-			page->toolTabs->SelectedIndex = 3;
+			page->toolTabs->SelectedIndex = 4;
 			page->UpdateStartButton();
 			return;
 		}
@@ -729,11 +714,163 @@ void DirectXPage::DownloadGraphicPacks_Click(Platform::Object^, RoutedEventArgs^
 			status << "Graphic Packs are already up to date";
 		else
 			status << std::get<2>(result) << " Graphic Pack(s) downloaded";
-		if (std::get<3>(result))
-			status << "; " << std::get<3>(result) << " enabled";
 		page->launchStatus->Text = FromUtf8(status.str());
 		page->RefreshLibrary();
 	}, task_continuation_context::use_current());
+}
+
+void DirectXPage::InstallGraphicPacks_Click(Platform::Object^, RoutedEventArgs^)
+{
+	if (!m_main || !m_cemuReady || m_libraryBusy || m_gameRunning)
+		return;
+	auto picker = ref new FolderPicker();
+	picker->SuggestedStartLocation = PickerLocationId::ComputerFolder;
+	picker->FileTypeFilter->Append(WinRtString(L"*"));
+	picker->CommitButtonText = WinRtString(L"Install graphic packs");
+	Platform::WeakReference weakThis(this);
+	create_task(picker->PickSingleFolderAsync()).then([weakThis](StorageFolder^ folder)
+	{
+		auto page = weakThis.Resolve<DirectXPage>();
+		if (!page || !folder || !page->m_main)
+			return;
+		page->m_libraryBusy = true;
+		page->SetLibraryActionsEnabled(false);
+		page->graphicPacksStatus->Text = "Installing selected graphic packs...";
+		const auto main = page->m_main;
+		create_task([main, folder]()
+		{
+			uint32_t imported{};
+			return std::make_pair(main->InstallGraphicPacks(folder, &imported), imported);
+		}).then([weakThis](std::pair<bool, uint32_t> result)
+		{
+			auto page = weakThis.Resolve<DirectXPage>();
+			if (!page) return;
+			page->m_libraryBusy = false;
+			page->SetLibraryActionsEnabled(true);
+			if (!result.first)
+			{
+				page->graphicPacksStatus->Text = "Graphic pack installation failed.";
+				page->AppendError("The selected folder does not contain valid Cemu graphic packs or could not be installed.");
+				return;
+			}
+			page->graphicPacksStatus->Text = FromUtf8(
+				std::to_string(result.second) + " graphic pack(s) installed. Configure them individually in this tab.");
+			page->RefreshLibrary();
+		}, task_continuation_context::use_current());
+	}, task_continuation_context::use_current());
+}
+
+void DirectXPage::GraphicPackGame_SelectionChanged(Platform::Object^,
+	SelectionChangedEventArgs^)
+{
+	if (!m_loadingGraphicPacks)
+		RefreshGraphicPacksForSelectedGame();
+}
+
+void DirectXPage::GraphicPack_Toggled(Platform::Object^ sender, RoutedEventArgs^)
+{
+	if (m_loadingGraphicPacks || !m_main || m_gameRunning)
+		return;
+	auto toggle = dynamic_cast<ToggleSwitch^>(sender);
+	if (!toggle || !toggle->Tag || graphicPackGameBox->SelectedIndex < 0 ||
+		static_cast<size_t>(graphicPackGameBox->SelectedIndex) >= m_graphicPackGameIds.size())
+		return;
+	auto identity = dynamic_cast<Platform::String^>(toggle->Tag);
+	if (!identity || identity->IsEmpty())
+		return;
+	const uint64_t titleId = m_graphicPackGameIds[graphicPackGameBox->SelectedIndex];
+	if (!m_main->SetGraphicPackEnabled(titleId, ToUtf8(identity), toggle->IsOn))
+	{
+		graphicPacksStatus->Text = "Could not save the selected graphic pack state.";
+		m_loadingGraphicPacks = true;
+		toggle->IsOn = !toggle->IsOn;
+		m_loadingGraphicPacks = false;
+		return;
+	}
+	graphicPacksStatus->Text = toggle->IsOn
+		? "Graphic pack enabled for the selected game."
+		: "Graphic pack disabled for the selected game.";
+}
+
+void DirectXPage::RefreshGraphicPackGames()
+{
+	uint64_t previousTitleId{};
+	if (graphicPackGameBox->SelectedIndex >= 0 &&
+		static_cast<size_t>(graphicPackGameBox->SelectedIndex) < m_graphicPackGameIds.size())
+		previousTitleId = m_graphicPackGameIds[graphicPackGameBox->SelectedIndex];
+	m_loadingGraphicPacks = true;
+	graphicPackGameBox->Items->Clear();
+	m_graphicPackGameIds.clear();
+	int restoredIndex = -1;
+	for (const auto& title : m_installedTitles)
+	{
+		// Host-only IDs identify loose files by path and are not Wii U title IDs,
+		// so they cannot be matched safely against a pack's titleIds list.
+		if (!title.titleId || (title.titleId & 0xF000000000000000ull) == 0xF000000000000000ull ||
+			std::find(m_graphicPackGameIds.begin(),
+			m_graphicPackGameIds.end(), title.titleId) != m_graphicPackGameIds.end())
+			continue;
+		if (title.titleId == previousTitleId)
+			restoredIndex = static_cast<int>(m_graphicPackGameIds.size());
+		m_graphicPackGameIds.emplace_back(title.titleId);
+		graphicPackGameBox->Items->Append(FromUtf8(title.name));
+	}
+	graphicPackGameBox->IsEnabled = m_cemuReady && !m_graphicPackGameIds.empty();
+	graphicPackGameBox->SelectedIndex = restoredIndex >= 0 ? restoredIndex :
+		(m_graphicPackGameIds.empty() ? -1 : 0);
+	m_loadingGraphicPacks = false;
+	RefreshGraphicPacksForSelectedGame();
+}
+
+void DirectXPage::RefreshGraphicPacksForSelectedGame()
+{
+	m_loadingGraphicPacks = true;
+	graphicPacksList->Items->Clear();
+	const int index = graphicPackGameBox->SelectedIndex;
+	if (!m_main || index < 0 || static_cast<size_t>(index) >= m_graphicPackGameIds.size())
+	{
+		graphicPacksStatus->Text = "Choose a game to manage its installed graphic packs.";
+		m_loadingGraphicPacks = false;
+		return;
+	}
+	const auto packs = m_main->GetGraphicPacksForTitle(m_graphicPackGameIds[index]);
+	for (const auto& pack : packs)
+	{
+		auto item = ref new GraphicPackViewModel();
+		item->Identity = FromUtf8(pack.identity);
+		item->Name = FromUtf8(pack.name);
+		item->Category = FromUtf8(pack.category.empty() ? "General" : pack.category);
+		item->Description = FromUtf8(pack.description);
+		item->Enabled = pack.enabled;
+		graphicPacksList->Items->Append(item);
+	}
+	graphicPacksStatus->Text = packs.empty()
+		? "No installed graphic packs are compatible with this game."
+		: FromUtf8(std::to_string(packs.size()) + " compatible graphic pack(s). Changes are saved individually.");
+	m_loadingGraphicPacks = false;
+	UpdateGraphicPackGridColumns();
+}
+
+void DirectXPage::GraphicPacksList_SizeChanged(Platform::Object^,
+	SizeChangedEventArgs^)
+{
+	UpdateGraphicPackGridColumns();
+}
+
+void DirectXPage::UpdateGraphicPackGridColumns()
+{
+	if (!graphicPacksList || graphicPacksList->ActualWidth <= 0)
+		return;
+	auto panel = dynamic_cast<ItemsWrapGrid^>(graphicPacksList->ItemsPanelRoot);
+	if (!panel)
+		return;
+	// Reserve space for the vertical scrollbar and split the remaining width
+	// into four identical slots. Item margins are contained inside each slot.
+	constexpr double scrollbarAndEdgeAllowance = 20.0;
+	const double usableWidth = (std::max)(0.0,
+		graphicPacksList->ActualWidth - scrollbarAndEdgeAllowance);
+	panel->ItemWidth = (std::max)(180.0, std::floor(usableWidth / 4.0));
+	panel->ItemHeight = 174.0;
 }
 
 void DirectXPage::ClearShaderCache_Click(Platform::Object^, RoutedEventArgs^)
@@ -774,7 +911,7 @@ void DirectXPage::ClearShaderCache_Click(Platform::Object^, RoutedEventArgs^)
 			{
 				page->launchStatus->Text = "Could not clear the shader cache; see Help and errors";
 				page->SetTabsVisible(true);
-				page->toolTabs->SelectedIndex = 3;
+				page->toolTabs->SelectedIndex = 4;
 			}
 			else
 			{
@@ -906,7 +1043,7 @@ void DirectXPage::DeleteInstalledTitle(uint64_t titleId)
 				page->SetLibraryActionsEnabled(true);
 				page->launchStatus->Text = "Could not delete the installed game; see Help and errors";
 				page->SetTabsVisible(true);
-				page->toolTabs->SelectedIndex = 3;
+				page->toolTabs->SelectedIndex = 4;
 				page->UpdateStartButton();
 				return;
 			}
@@ -1032,7 +1169,7 @@ void DirectXPage::StartGame_Click(Platform::Object^, RoutedEventArgs^)
 		if (!m_gamepadProfileReady)
 		{
 			launchStatus->Text = "Could not prepare the Xbox Controller profile";
-			AppendError("The Wii U GamePad profile was not ready before starting the game.");
+			AppendError("The selected Wii U controller profile was not ready before starting the game.");
 			UpdateGamepadStatus();
 			return;
 		}
@@ -1054,8 +1191,6 @@ void DirectXPage::StartGame_Click(Platform::Object^, RoutedEventArgs^)
 	create_task([this, titleId]()
 	{
 		if (!m_main) return false;
-		uint32_t enabledPacks{};
-		m_main->SetGraphicPacksEnabledForTitle(titleId, true, &enabledPacks);
 		return m_main->LaunchInstalledTitle(titleId);
 	}).then([this](bool launched)
 	{
@@ -1254,7 +1389,7 @@ void DirectXPage::BeginExternalLaunch(std::function<bool()> launchOperation)
 		if (!m_gamepadProfileReady)
 		{
 			launchStatus->Text = "Could not prepare the Xbox Controller profile";
-			AppendError("The Wii U GamePad profile was not ready before starting the selected title.");
+			AppendError("The selected Wii U controller profile was not ready before starting the selected title.");
 			return;
 		}
 	}
@@ -1369,19 +1504,6 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 				++scanResult.failed;
 		}
 		auto titles = main ? main->GetInstalledTitles() : std::vector<InstalledTitle>{};
-		if (main)
-		{
-			for (const auto& title : titles)
-			{
-				uint32_t affected{};
-				if (main->SetGraphicPacksEnabledForTitle(title.titleId, true,
-					&affected))
-					scanResult.enabledGraphicPacks += affected;
-			}
-			// Refresh the counters displayed by the library after changing pack
-			// state for every installed title.
-			titles = main->GetInstalledTitles();
-		}
 		return std::make_pair(std::move(titles), scanResult);
 	}).then([this, scanLocalFolder](
 		std::pair<std::vector<InstalledTitle>, LocalInstallScanResult> result)
@@ -1401,6 +1523,7 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 		for (const auto& externalTitle : m_externalTitles)
 			titles.emplace_back(externalTitle);
 		m_installedTitles = std::move(titles);
+		RefreshGraphicPackGames();
 		installedGamesList->Items->Clear();
 		for (const auto& title : m_installedTitles)
 		{
@@ -1413,9 +1536,9 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 					: "Local game file")
 					<< "  |  Format: " << title.localGameFormat
 					<< (title.isExternalStorage
-						? (title.localGameFormat == "EXTRACTED"
+						? ((title.localGameFormat == "EXTRACTED" || title.localGameFormat == "NUS TITLE")
 							? "  |  Mounted directly from external storage (not installed)"
-							: "  |  Extract this format to launch without internal staging")
+							: "  |  Runs directly from external storage (never copied)")
 						: "  |  Ready to launch from GamesToInstall");
 			}
 			else
@@ -1502,8 +1625,6 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 				status << "; " << scanResult.graphicPacksImported << " Graphic Pack(s) imported";
 			if (scanResult.graphicPacksAlreadyProcessed)
 				status << "; " << scanResult.graphicPacksAlreadyProcessed << " Graphic Pack(s) already processed";
-			if (scanResult.enabledGraphicPacks)
-				status << "; " << scanResult.enabledGraphicPacks << " Graphic Pack(s) enabled";
 			if (scanResult.failed)
 			{
 				status << "; " << scanResult.failed << " failed";
@@ -1527,7 +1648,7 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 			{
 				launchStatus->Text = FromUtf8("External scan complete; " +
 					std::to_string(m_externalTitles.size()) +
-					" extracted title(s) ready to mount from external storage");
+					" supported title item(s) ready to launch from external storage");
 			}
 			else
 			{
@@ -1548,6 +1669,11 @@ void DirectXPage::SetLibraryActionsEnabled(bool enabled)
 	refreshLibraryButton->IsEnabled = canUse;
 	scanExternalStorageButton->IsEnabled = canUse && !m_gameRunning;
 	downloadGraphicPacksButton->IsEnabled = canUse && !m_gameRunning;
+	installGraphicPacksButton->IsEnabled = canUse && !m_gameRunning;
+	installGraphicPacksTabButton->IsEnabled = canUse && !m_gameRunning;
+	downloadGraphicPacksTabButton->IsEnabled = canUse && !m_gameRunning;
+	graphicPackGameBox->IsEnabled = canUse && !m_gameRunning &&
+		!m_graphicPackGameIds.empty();
 	clearShaderCacheButton->IsEnabled = canUse && !m_gameRunning;
 	installedGamesList->IsEnabled = enabled;
 }
@@ -1560,18 +1686,11 @@ void DirectXPage::ToggleTabs_Click(Platform::Object^, RoutedEventArgs^)
 void DirectXPage::ToolTabs_SelectionChanged(
 	Platform::Object^, Windows::UI::Xaml::Controls::SelectionChangedEventArgs^)
 {
-	// Library, Toy Pad and diagnostics are deliberately compact. Settings has
-	// several categories and needs most of the available screen, with its inner
-	// ScrollViewer handling the remaining content on both PC and Xbox.
-	if (toolTabs->SelectedIndex != 2)
-	{
-		tabsPanel->MaxHeight = 420.0;
-		return;
-	}
-	const double availableHeight = Window::Current
-		? Window::Current->Bounds.Height - 112.0
-		: 720.0;
-	tabsPanel->MaxHeight = (std::max)(420.0, (std::min)(760.0, availableHeight));
+	// Every tool page owns the complete area below the command bar. Individual
+	// pages provide their own scrolling where their content exceeds that area.
+	// Recalculate card width after Pivot finishes changing pages.
+	if (toolTabs->SelectedIndex == 2)
+		UpdateGraphicPackGridColumns();
 }
 
 void DirectXPage::ToggleGettingStarted_Click(Platform::Object^, RoutedEventArgs^)
@@ -1584,16 +1703,17 @@ void DirectXPage::LoadSettings()
 	CemuEmbedSettings settings{};
 	if (!m_main || !m_main->GetSettings(settings))
 	{
-		applySettingsButton->IsEnabled = false;
 		settingsStatus->Text = "Cemu settings are unavailable.";
 		return;
 	}
+	m_loadingSettings = true;
 	auto select = [](ComboBox^ box, int value, int maximum)
 	{
 		box->SelectedIndex = (std::max)(0, (std::min)(value, maximum));
 	};
 	select(cpuModeBox, settings.cpu_mode, 4);
 	select(consoleLanguageBox, settings.console_language, 11);
+	select(emulatedControllerBox, settings.emulated_controller_type, 3);
 	select(vsyncBox, settings.vsync == 0 ? 0 : 1, 1);
 	bootSoundCheck->IsChecked = settings.play_boot_sound != 0;
 	disableScreensaverCheck->IsChecked = settings.disable_screensaver != 0;
@@ -1629,15 +1749,35 @@ void DirectXPage::LoadSettings()
 	skylandersCheck->IsChecked = settings.emulate_skylander_portal != 0;
 	infinityCheck->IsChecked = settings.emulate_infinity_base != 0;
 	dimensionsCheck->IsChecked = settings.emulate_dimensions_toypad != 0;
-	applySettingsButton->IsEnabled = !m_gameRunning;
-	settingsStatus->Text = "Settings loaded. Select Apply settings to save changes.";
+	m_loadingSettings = false;
+	settingsStatus->Text = "Settings are saved automatically when changed.";
 }
 
-void DirectXPage::ApplySettings_Click(Platform::Object^, RoutedEventArgs^)
+void DirectXPage::SettingsSelectionChanged(Platform::Object^,
+	SelectionChangedEventArgs^)
 {
+	SaveSettings();
+}
+
+void DirectXPage::SettingsCheckChanged(Platform::Object^, RoutedEventArgs^)
+{
+	SaveSettings();
+}
+
+void DirectXPage::SettingsValueChanged(Platform::Object^,
+	Windows::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs^)
+{
+	SaveSettings();
+}
+
+void DirectXPage::SaveSettings()
+{
+	if (m_loadingSettings)
+		return;
 	if (!m_main || !m_cemuReady || m_gameRunning)
 	{
-		settingsStatus->Text = "Stop the running game before changing settings.";
+		if (m_gameRunning)
+			settingsStatus->Text = "Stop the running game before changing settings.";
 		return;
 	}
 	CemuEmbedSettings settings{};
@@ -1649,6 +1789,7 @@ void DirectXPage::ApplySettings_Click(Platform::Object^, RoutedEventArgs^)
 	auto checked = [](CheckBox^ box) { return box->IsChecked->Value ? 1 : 0; };
 	settings.cpu_mode = cpuModeBox->SelectedIndex;
 	settings.console_language = consoleLanguageBox->SelectedIndex;
+	settings.emulated_controller_type = emulatedControllerBox->SelectedIndex;
 	settings.vsync = vsyncBox->SelectedIndex;
 	settings.play_boot_sound = checked(bootSoundCheck);
 	settings.disable_screensaver = checked(disableScreensaverCheck);
@@ -1687,7 +1828,9 @@ void DirectXPage::ApplySettings_Click(Platform::Object^, RoutedEventArgs^)
 		settingsStatus->Text = "Could not save Cemu settings.";
 		return;
 	}
-	settingsStatus->Text = "Settings saved. USB and startup options apply after restarting the app.";
+	if (m_gamepad)
+		TryConfigureDefaultGamepad();
+	settingsStatus->Text = "Settings saved automatically. The player 1 Wii U controller is active; USB and startup options apply after restarting the app.";
 }
 
 void DirectXPage::SetGettingStartedExpanded(bool expanded)
@@ -1817,28 +1960,27 @@ void DirectXPage::SetTabsVisible(bool visible)
 
 void DirectXPage::SetGamePresentation(bool running)
 {
-	applySettingsButton->IsEnabled = m_cemuReady && !running;
 	if (running)
 	{
+		// Give the running title the complete client area. This is a layout change
+		// inside the existing Xbox/UWP window, not a fullscreen-mode transition.
 		topCommandBar->Visibility = CollapsedValue;
-		tabsPanel->Visibility = CollapsedValue;
 		Grid::SetRow(emulatorViewport, 0);
 		Grid::SetRowSpan(emulatorViewport, 2);
+		tabsPanel->Visibility = CollapsedValue;
+		toggleTabsButtonText->Text = "Show options";
 		return;
 	}
 
-	// Restore every focus target that FocusEmulatorInput disables. Without this,
-	// a failed launch leaves the library visible but impossible to navigate with
-	// the Xbox controller. Returning from game presentation must also restore the
-	// tools panel that was hidden immediately before launch.
+	topCommandBar->Visibility = VisibleValue;
+	Grid::SetRow(emulatorViewport, 1);
+	Grid::SetRowSpan(emulatorViewport, 1);
+	// Restore every focus target disabled while the title owned input.
 	toggleTabsButton->IsTabStop = true;
 	startButton->IsTabStop = true;
 	metricsButton->IsTabStop = true;
-	topCommandBar->Visibility = VisibleValue;
 	tabsPanel->Visibility = VisibleValue;
 	toggleTabsButtonText->Text = "Hide options";
-	Grid::SetRow(emulatorViewport, 1);
-	Grid::SetRowSpan(emulatorViewport, 1);
 }
 
 void DirectXPage::SetExternalLoadingVisible(bool visible)
@@ -1914,7 +2056,6 @@ void DirectXPage::OnCemuStateChanged(CemuEmbedState state)
 				placeDimensionsFigureButton->IsEnabled = false;
 				removeDimensionsFigureButton->IsEnabled = false;
 				moveDimensionsFigureButton->IsEnabled = false;
-				applySettingsButton->IsEnabled = false;
 			}
 			UpdateStartButton();
 		})));
@@ -2031,7 +2172,7 @@ void DirectXPage::UpdateGamepadStatus()
 	text << L"Xbox Controller connected";
 	if (m_gamepadProfileReady)
 	{
-		text << L" \u2022 Wii U GamePad profile";
+		text << L" \u2022 selected Wii U controller profile";
 		if (m_virtualMouseEnabled)
 			text << L" \u2022 virtual mouse active (A: click)";
 		else if (m_gameRunning)

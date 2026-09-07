@@ -7,6 +7,16 @@
 
 namespace Cemu_UWP_Host
 {
+	public ref class GraphicPackViewModel sealed
+	{
+	public:
+		property Platform::String^ Identity;
+		property Platform::String^ Name;
+		property Platform::String^ Category;
+		property Platform::String^ Description;
+		property bool Enabled;
+	};
+
 	public ref class DirectXPage sealed
 	{
 	public:
@@ -28,6 +38,10 @@ namespace Cemu_UWP_Host
 		void InstallContent_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void ImportKeys_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void DownloadGraphicPacks_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void InstallGraphicPacks_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void GraphicPackGame_SelectionChanged(Platform::Object^ sender,
+			Windows::UI::Xaml::Controls::SelectionChangedEventArgs^ args);
+		void GraphicPack_Toggled(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void ClearShaderCache_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void RefreshLibrary_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void ScanExternalStorage_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
@@ -42,7 +56,12 @@ namespace Cemu_UWP_Host
 			Windows::UI::Xaml::Controls::SelectionChangedEventArgs^ args);
 		void ToggleGettingStarted_Click(Platform::Object^ sender,
 			Windows::UI::Xaml::RoutedEventArgs^ args);
-		void ApplySettings_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void SettingsSelectionChanged(Platform::Object^ sender,
+			Windows::UI::Xaml::Controls::SelectionChangedEventArgs^ args);
+		void SettingsCheckChanged(Platform::Object^ sender,
+			Windows::UI::Xaml::RoutedEventArgs^ args);
+		void SettingsValueChanged(Platform::Object^ sender,
+			Windows::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs^ args);
 		void PlaceDimensionsFigure_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void RemoveDimensionsFigure_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void MoveDimensionsFigure_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
@@ -50,6 +69,7 @@ namespace Cemu_UWP_Host
 		void EmulatorViewport_PointerPressed(Platform::Object^ sender,
 			Windows::UI::Xaml::Input::PointerRoutedEventArgs^ args);
 		void EmulatorViewport_SizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ args);
+		void GraphicPacksList_SizeChanged(Platform::Object^ sender, Windows::UI::Xaml::SizeChangedEventArgs^ args);
 		void EmulatorSurface_CompositionScaleChanged(
 			Windows::UI::Xaml::Controls::SwapChainPanel^ sender,
 			Platform::Object^ args);
@@ -74,7 +94,11 @@ namespace Cemu_UWP_Host
 		CemuEmbedGamepadState PublishGamepadState();
 		void UpdateActiveAccount();
 		void RefreshDimensionsFigures();
+		void RefreshGraphicPackGames();
+		void RefreshGraphicPacksForSelectedGame();
+		void UpdateGraphicPackGridColumns();
 		void LoadSettings();
+		void SaveSettings();
 		void TryConfigureDefaultGamepad();
 		void UpdateVirtualMouse(const CemuEmbedGamepadState& gamepad);
 		void SetVirtualMouseEnabled(bool enabled);
@@ -83,6 +107,7 @@ namespace Cemu_UWP_Host
 		std::vector<InstalledTitle> m_installedTitles;
 		std::vector<InstalledTitle> m_externalTitles;
 		std::vector<DimensionsFigure> m_dimensionsFigures;
+		std::vector<uint64_t> m_graphicPackGameIds;
 		Windows::Foundation::EventRegistrationToken m_renderingToken{};
 		Windows::Foundation::EventRegistrationToken m_gamepadAddedToken{};
 		Windows::Foundation::EventRegistrationToken m_gamepadRemovedToken{};
@@ -106,6 +131,8 @@ namespace Cemu_UWP_Host
 		bool m_virtualMouseLeftDown = false;
 		bool m_performanceMetricsVisible = false;
 		bool m_gettingStartedExpanded = false;
+		bool m_loadingSettings = false;
+		bool m_loadingGraphicPacks = false;
 		uint64_t m_selectedTitleId = 0;
 		bool m_restoringCommittedSelection = false;
 		// The Xbox input object belongs to the XAML apartment. Keep one snapshot

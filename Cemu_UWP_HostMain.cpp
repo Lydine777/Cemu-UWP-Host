@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <unordered_map>
 #include <utility>
 
@@ -10,6 +11,9 @@ using namespace Cemu_UWP_Host;
 using namespace concurrency;
 using namespace Windows::Storage;
 using namespace Windows::Storage::Streams;
+using namespace Windows::Data::Json;
+using namespace Windows::Foundation;
+using namespace Windows::Web::Http;
 
 namespace
 {
@@ -323,11 +327,12 @@ bool Cemu_UWP_HostMain::Start()
 bool Cemu_UWP_HostMain::LaunchGame(StorageFolder^ gameFolder)
 {
 	if (!m_instance || !gameFolder) return false;
-	DirectCopyBroker broker{ this };
+	m_activeExternalFolders.clear();
+	m_activeExternalFolders.push_back(gameFolder);
 	const CemuEmbedBrokeredStorage storage{
-		sizeof(storage), CEMU_EMBED_BROKERED_STORAGE_VERSION, &broker,
+		sizeof(storage), CEMU_EMBED_BROKERED_STORAGE_VERSION, this,
 		EnumerateBrokeredFolder, OpenBrokeredFile, ReadBrokeredStream,
-		CloseBrokeredStream, DirectCopyBrokeredProgress, CopyBrokeredFileToCache,
+		CloseBrokeredStream, BrokeredProgress, nullptr,
 		OpenBrokeredRelativeFile
 	};
 	return CemuEmbed_LaunchGameFromBrokeredFolder(m_instance, reinterpret_cast<void*>(gameFolder), &storage) == CEMU_EMBED_OK;
@@ -369,12 +374,17 @@ bool Cemu_UWP_HostMain::LaunchExternalGameFolders(StorageFolder^ selectedFolder,
 {
 	if (!m_instance || !selectedFolder)
 		return false;
+	m_activeExternalFolders.clear();
+	m_activeExternalFolders.push_back(selectedFolder);
 	std::vector<void*> folders;
 	folders.reserve(supplementalFolders.size());
 	for (const auto& folder : supplementalFolders)
 	{
 		if (folder)
+		{
 			folders.emplace_back(reinterpret_cast<void*>(folder));
+			m_activeExternalFolders.push_back(folder);
+		}
 	}
 	const CemuEmbedBrokeredStorage storage{
 		sizeof(storage), CEMU_EMBED_BROKERED_STORAGE_VERSION, this,
@@ -446,12 +456,90 @@ bool Cemu_UWP_HostMain::DeleteInstalledTitle(uint64_t baseTitleId,
 bool Cemu_UWP_HostMain::DownloadGraphicPacks(uint32_t* downloadedPackCount,
 	bool* alreadyCurrent)
 {
-	int32_t current{};
-	const bool result = m_instance && CemuEmbed_DownloadGraphicPacks(m_instance,
-		downloadedPackCount, &current) == CEMU_EMBED_OK;
-	if (alreadyCurrent)
-		*alreadyCurrent = current != 0;
-	return result;
+	if (downloadedPackCount) *downloadedPackCount = 0;
+	if (alreadyCurrent) *alreadyCurrent = false;
+	if (!m_instance) return false;
+	auto reportDownloadError = [this](const std::string& detail)
+	{
+		Error(this, CEMU_EMBED_STORAGE_FAILED, detail.c_str());
+		return false;
+	};
+
+	try
+	{
+		auto client = ref new HttpClient();
+		client->DefaultRequestHeaders->UserAgent->ParseAdd(
+			ref new Platform::String(L"Cemu-UWP-Host/1.0"));
+		client->DefaultRequestHeaders->Accept->ParseAdd(
+			ref new Platform::String(L"application/vnd.github+json"));
+		client->DefaultRequestHeaders->TryAppendWithoutValidation(
+			ref new Platform::String(L"X-GitHub-Api-Version"),
+			ref new Platform::String(L"2022-11-28"));
+		const auto manifestUri = ref new Uri(ref new Platform::String(
+			L"https://api.github.com/repos/cemu-project/cemu_graphic_packs/releases/latest"));
+		const auto manifestResponse = create_task(client->GetAsync(manifestUri)).get();
+		manifestResponse->EnsureSuccessStatusCode();
+		const auto manifestText = create_task(
+			manifestResponse->Content->ReadAsStringAsync()).get();
+		const auto release = JsonObject::Parse(manifestText);
+		const auto releaseName = release->GetNamedString(
+			ref new Platform::String(L"name"), nullptr);
+		const auto assets = release->GetNamedArray(
+			ref new Platform::String(L"assets"), nullptr);
+		if (!releaseName || releaseName->IsEmpty() || !assets)
+			return reportDownloadError("The GitHub response does not contain a Graphic Pack release.");
+
+		Platform::String^ downloadUrl = nullptr;
+		for (unsigned int index = 0; index < assets->Size; ++index)
+		{
+			auto asset = assets->GetObjectAt(index);
+			auto assetName = asset->GetNamedString(
+				ref new Platform::String(L"name"), nullptr);
+			if (!assetName || assetName->Length() < 4)
+				continue;
+			std::wstring lowered(assetName->Data(), assetName->Length());
+			std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+				[](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+			if (lowered.compare(lowered.size() - 4, 4, L".zip") != 0)
+				continue;
+			downloadUrl = asset->GetNamedString(
+				ref new Platform::String(L"browser_download_url"), nullptr);
+			if (downloadUrl && !downloadUrl->IsEmpty())
+				break;
+		}
+		if (!downloadUrl)
+			return reportDownloadError("The current Graphic Pack release does not provide a ZIP archive.");
+
+		const auto archiveResponse = create_task(client->GetAsync(
+			ref new Uri(downloadUrl), HttpCompletionOption::ResponseHeadersRead)).get();
+		archiveResponse->EnsureSuccessStatusCode();
+		const auto declaredLength = archiveResponse->Content->Headers->ContentLength;
+		constexpr uint64_t downloadLimit = 256ull * 1024ull * 1024ull;
+		if (declaredLength && declaredLength->Value > downloadLimit)
+			return reportDownloadError("The Graphic Pack download is larger than the 256 MiB safety limit.");
+		const auto archiveBuffer = create_task(
+			archiveResponse->Content->ReadAsBufferAsync()).get();
+		if (!archiveBuffer || archiveBuffer->Length == 0 ||
+			archiveBuffer->Length > downloadLimit)
+			return reportDownloadError("Windows received an empty or unexpectedly large Graphic Pack archive.");
+		std::vector<uint8_t> archive(archiveBuffer->Length);
+		auto reader = DataReader::FromBuffer(archiveBuffer);
+		reader->ReadBytes(Platform::ArrayReference<uint8_t>(archive.data(),
+			static_cast<unsigned int>(archive.size())));
+		const auto releaseNameUtf8 = ToUtf8(releaseName);
+		int32_t current{};
+		const bool installed = CemuEmbed_InstallDownloadedGraphicPacks(m_instance,
+			archive.data(), archive.size(), releaseNameUtf8.c_str(),
+			downloadedPackCount, &current) == CEMU_EMBED_OK;
+		if (alreadyCurrent) *alreadyCurrent = current != 0;
+		return installed;
+	}
+	catch (Platform::Exception^ exception)
+	{
+		const auto detail = ToUtf8(exception && exception->Message
+			? exception->Message : ref new Platform::String(L"Windows HTTP error"));
+		return reportDownloadError("Graphic Pack download failed: " + detail);
+	}
 }
 
 bool Cemu_UWP_HostMain::ClearShaderCaches(uint32_t* removedEntryCount)
@@ -481,6 +569,23 @@ bool Cemu_UWP_HostMain::SetGraphicPacksEnabledForTitle(uint64_t baseTitleId,
 {
 	return m_instance && CemuEmbed_SetGraphicPacksEnabledForTitle(m_instance,
 		baseTitleId, enabled ? 1 : 0, affectedPackCount) == CEMU_EMBED_OK;
+}
+
+std::vector<GraphicPack> Cemu_UWP_HostMain::GetGraphicPacksForTitle(uint64_t baseTitleId)
+{
+	std::vector<GraphicPack> packs;
+	if (m_instance && baseTitleId)
+		CemuEmbed_EnumerateGraphicPacksForTitle(m_instance, baseTitleId,
+			GraphicPackFound, &packs);
+	return packs;
+}
+
+bool Cemu_UWP_HostMain::SetGraphicPackEnabled(uint64_t baseTitleId,
+	const std::string& identity, bool enabled)
+{
+	return m_instance && baseTitleId && !identity.empty() &&
+		CemuEmbed_SetGraphicPackEnabled(m_instance, baseTitleId,
+			identity.c_str(), enabled ? 1 : 0) == CEMU_EMBED_OK;
 }
 
 bool Cemu_UWP_HostMain::ApplySafeGraphicPackPolicyForTitle(uint64_t baseTitleId,
@@ -603,6 +708,40 @@ CemuEmbedResult __cdecl Cemu_UWP_HostMain::DimensionsFigureFound(
 		figure->id,
 		figure->type == CEMU_EMBED_DIMENSIONS_VEHICLE_OR_GADGET,
 		figure->name_utf8 ? figure->name_utf8 : ""
+	});
+	return CEMU_EMBED_OK;
+}
+
+CemuEmbedResult __cdecl Cemu_UWP_HostMain::GraphicPackFound(
+	void* userData, const CemuEmbedGraphicPack* graphicPack)
+{
+	if (!userData || !graphicPack ||
+		graphicPack->struct_size < sizeof(CemuEmbedGraphicPack) ||
+		graphicPack->abi_version != CEMU_EMBED_GRAPHIC_PACK_VERSION)
+		return CEMU_EMBED_INVALID_ARGUMENT;
+	auto& packs = *static_cast<std::vector<GraphicPack>*>(userData);
+	const std::string identity = graphicPack->identity_utf8
+		? graphicPack->identity_utf8 : "";
+	std::string displayName = graphicPack->name_utf8
+		? graphicPack->name_utf8 : "";
+	if (displayName.empty())
+	{
+		auto path = identity;
+		const auto rules = path.find_last_of("/\\");
+		if (rules != std::string::npos)
+			path.erase(rules);
+		const auto parent = path.find_last_of("/\\");
+		displayName = parent == std::string::npos ? path : path.substr(parent + 1);
+		if (displayName.empty())
+			displayName = "Unnamed graphic pack";
+	}
+	packs.push_back({
+		identity,
+		displayName,
+		graphicPack->category_utf8 ? graphicPack->category_utf8 : "",
+		graphicPack->description_utf8 ? graphicPack->description_utf8 : "",
+		graphicPack->enabled != 0,
+		graphicPack->default_enabled != 0
 	});
 	return CEMU_EMBED_OK;
 }
@@ -817,6 +956,7 @@ void Cemu_UWP_HostMain::Stop()
 	if (!m_instance) return;
 	CemuEmbed_Destroy(m_instance);
 	m_instance = nullptr;
+	m_activeExternalFolders.clear();
 	m_started = false;
 }
 

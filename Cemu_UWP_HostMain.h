@@ -44,6 +44,16 @@ namespace Cemu_UWP_Host
 		std::string name;
 	};
 
+	struct GraphicPack
+	{
+		std::string identity;
+		std::string name;
+		std::string category;
+		std::string description;
+		bool enabled{};
+		bool defaultEnabled{};
+	};
+
 	class Cemu_UWP_HostMain
 	{
 	public:
@@ -72,6 +82,9 @@ namespace Cemu_UWP_Host
 			uint32_t* importedPackCount = nullptr);
 		bool SetGraphicPacksEnabledForTitle(uint64_t baseTitleId, bool enabled,
 			uint32_t* affectedPackCount = nullptr);
+		std::vector<GraphicPack> GetGraphicPacksForTitle(uint64_t baseTitleId);
+		bool SetGraphicPackEnabled(uint64_t baseTitleId,
+			const std::string& identity, bool enabled);
 		bool ApplySafeGraphicPackPolicyForTitle(uint64_t baseTitleId,
 			uint32_t* affectedPackCount = nullptr);
 		bool EnsureDefaultGamepadProfile();
@@ -109,6 +122,8 @@ namespace Cemu_UWP_Host
 			const CemuEmbedInstalledTitle* title);
 		static CemuEmbedResult __cdecl DimensionsFigureFound(void* userData,
 			const CemuEmbedDimensionsFigure* figure);
+		static CemuEmbedResult __cdecl GraphicPackFound(void* userData,
+			const CemuEmbedGraphicPack* graphicPack);
 		CemuEmbedInstance* m_instance = nullptr;
 		HWND m_window = nullptr;
 		CemuEmbedD3D11Surface m_d3d11Surface{};
@@ -120,5 +135,8 @@ namespace Cemu_UWP_Host
 		std::function<void(const std::string&)> m_diagnosticCallback;
 		std::function<void(CemuEmbedState)> m_stateCallback;
 		std::function<void(uint64_t, uint64_t, const std::string&)> m_progressCallback;
+		// Keep WinRT folder capabilities alive while the core services on-demand
+		// reads from removable/network storage.
+		std::vector<Windows::Storage::StorageFolder^> m_activeExternalFolders;
 	};
 }

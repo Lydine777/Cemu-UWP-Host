@@ -63,16 +63,16 @@
             Grid.Row="0"
             MinHeight="64"
             Background="{StaticResource TopBarBrush}">
-      <!-- Keep the Xbox bar on one compact row. Controller and account details
-           remain available to code, but only their icons consume bar space. -->
+      <!-- Keep the Xbox bar on one row while exposing controller and account
+           state directly instead of hiding those details behind tooltips. -->
       <Grid Margin="24,0">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="44" />
-          <ColumnDefinition Width="44" />
+          <ColumnDefinition Width="250" />
+          <ColumnDefinition Width="250" />
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0"
@@ -167,28 +167,58 @@
 
         <Grid Grid.Column="4"
               VerticalAlignment="Center"
-              HorizontalAlignment="Center"
-              ToolTipService.ToolTip="Controller status">
+              HorizontalAlignment="Stretch"
+              Margin="8,0,12,0"
+              ToolTipService.ToolTip="{Binding Text, ElementName=controllerStatus}">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
           <FontIcon x:Name="controllerStatusIcon"
                     Glyph="&#xE7FC;"
                     FontSize="19"
-                    Foreground="{StaticResource AccentBlueBrush}" />
-          <TextBlock x:Name="controllerStatus"
-                     Text="Controller disconnected"
-                     Visibility="Collapsed" />
+                    Foreground="{StaticResource AccentBlueBrush}"
+                    VerticalAlignment="Center"
+                    Margin="0,0,10,0" />
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="Controller status"
+                       FontSize="11"
+                       Foreground="{StaticResource MutedTextBrush}" />
+            <TextBlock x:Name="controllerStatus"
+                       Text="Controller disconnected"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="White"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
         </Grid>
 
         <Grid Grid.Column="5"
               VerticalAlignment="Center"
-              HorizontalAlignment="Center"
-              ToolTipService.ToolTip="Account status">
+              HorizontalAlignment="Stretch"
+              Margin="8,0,0,0"
+              ToolTipService.ToolTip="{Binding Text, ElementName=accountStatus}">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
           <FontIcon x:Name="accountStatusIcon"
                     Glyph="&#xE77B;"
                     FontSize="19"
-                    Foreground="{StaticResource AccentBlueBrush}" />
-          <TextBlock x:Name="accountStatus"
-                     Text="Account: loading..."
-                     Visibility="Collapsed" />
+                    Foreground="{StaticResource AccentBlueBrush}"
+                    VerticalAlignment="Center"
+                    Margin="0,0,10,0" />
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="Account status"
+                       FontSize="11"
+                       Foreground="{StaticResource MutedTextBrush}" />
+            <TextBlock x:Name="accountStatus"
+                       Text="Loading account..."
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="White"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
         </Grid>
       </Grid>
     </Border>

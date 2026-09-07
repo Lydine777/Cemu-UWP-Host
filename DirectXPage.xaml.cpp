@@ -55,6 +55,7 @@ struct LocalGameFile
 	std::string format;
 	std::string brokeredRelativePath;
 	StorageFolder^ brokeredTitleFolder{ nullptr };
+	uint64_t graphicPackTitleId{};
 };
 
 struct LocalInstallScanResult
@@ -804,16 +805,20 @@ void DirectXPage::RefreshGraphicPackGames()
 	int restoredIndex = -1;
 	for (const auto& title : m_installedTitles)
 	{
-		// Host-only IDs identify loose files by path and are not Wii U title IDs,
-		// so they cannot be matched safely against a pack's titleIds list.
-		if (!title.titleId || (title.titleId & 0xF000000000000000ull) == 0xF000000000000000ull ||
-			std::find(m_graphicPackGameIds.begin(),
-			m_graphicPackGameIds.end(), title.titleId) != m_graphicPackGameIds.end())
+		const bool hostOnlyId =
+			(title.titleId & 0xF000000000000000ull) == 0xF000000000000000ull;
+		const uint64_t graphicPackTitleId = title.graphicPackTitleId
+			? title.graphicPackTitleId : (hostOnlyId ? 0 : title.titleId);
+		if (!graphicPackTitleId)
 			continue;
-		if (title.titleId == previousTitleId)
+		if (graphicPackTitleId == previousTitleId && restoredIndex < 0)
 			restoredIndex = static_cast<int>(m_graphicPackGameIds.size());
-		m_graphicPackGameIds.emplace_back(title.titleId);
-		graphicPackGameBox->Items->Append(FromUtf8(title.name));
+		m_graphicPackGameIds.emplace_back(graphicPackTitleId);
+		std::string label = title.name;
+		if (!title.localGamePath.empty())
+			label += title.isExternalStorage
+				? "  [External storage]" : "  [GamesToInstall]";
+		graphicPackGameBox->Items->Append(FromUtf8(label));
 	}
 	graphicPackGameBox->IsEnabled = m_cemuReady && !m_graphicPackGameIds.empty();
 	graphicPackGameBox->SelectedIndex = restoredIndex >= 0 ? restoredIndex :
@@ -953,7 +958,8 @@ void DirectXPage::BeginExternalStorageScan(StorageFolder^ storageRoot)
 	startButton->IsEnabled = false;
 	launchStatus->Text = "Scanning selected external storage...";
 	Platform::WeakReference weakThis(this);
-	create_task([storageRoot]()
+	const auto main = m_main;
+	create_task([storageRoot, main]()
 	{
 		ExternalStorageScanResult scanResult{};
 		try
@@ -970,6 +976,16 @@ void DirectXPage::BeginExternalStorageScan(StorageFolder^ storageRoot)
 			++scanResult.inaccessibleFolderCount;
 		}
 		RemoveDuplicateExternalPaths(scanResult);
+		if (main)
+		{
+			for (auto& gameFile : scanResult.gameFiles)
+			{
+				uint64_t titleId{};
+				if (main->IdentifyBrokeredGame(gameFile.brokeredTitleFolder,
+					gameFile.brokeredRelativePath, &titleId))
+					gameFile.graphicPackTitleId = titleId;
+			}
+		}
 		return scanResult;
 	}).then([weakThis](ExternalStorageScanResult scanResult)
 	{
@@ -988,6 +1004,7 @@ void DirectXPage::BeginExternalStorageScan(StorageFolder^ storageRoot)
 			externalTitle.brokeredRelativePath = gameFile.brokeredRelativePath;
 			externalTitle.brokeredTitleFolder = gameFile.brokeredTitleFolder;
 			externalTitle.isExternalStorage = true;
+			externalTitle.graphicPackTitleId = gameFile.graphicPackTitleId;
 			page->m_externalTitles.emplace_back(std::move(externalTitle));
 		}
 		page->m_selectedTitleId = 0;
@@ -1463,6 +1480,15 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 				FindLocalStorageContent(importFolder, graphicPackCandidates,
 					scanResult.graphicPacksAlreadyProcessed,
 					scanResult.localGameFiles);
+				if (main)
+				{
+					for (auto& gameFile : scanResult.localGameFiles)
+					{
+						uint64_t titleId{};
+						if (main->IdentifyGamePath(gameFile.path, &titleId))
+							gameFile.graphicPackTitleId = titleId;
+					}
+				}
 				scanResult.discovered = static_cast<uint32_t>(scanResult.localGameFiles.size());
 				scanResult.graphicPacksDiscovered =
 					static_cast<uint32_t>(graphicPackCandidates.size());
@@ -1518,6 +1544,7 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 			localTitle.regionName = "Local storage";
 			localTitle.localGamePath = localGame.path;
 			localTitle.localGameFormat = localGame.format;
+			localTitle.graphicPackTitleId = localGame.graphicPackTitleId;
 			titles.emplace_back(std::move(localTitle));
 		}
 		for (const auto& externalTitle : m_externalTitles)

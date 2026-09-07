@@ -399,6 +399,30 @@ bool Cemu_UWP_HostMain::LaunchExternalGameFolders(StorageFolder^ selectedFolder,
 		&storage) == CEMU_EMBED_OK;
 }
 
+bool Cemu_UWP_HostMain::IdentifyGamePath(const std::string& gamePath,
+	uint64_t* baseTitleId)
+{
+	return m_instance && !gamePath.empty() && baseTitleId &&
+		CemuEmbed_IdentifyGamePath(m_instance, gamePath.c_str(), baseTitleId) ==
+		CEMU_EMBED_OK;
+}
+
+bool Cemu_UWP_HostMain::IdentifyBrokeredGame(StorageFolder^ folder,
+	const std::string& selectedRelativePath, uint64_t* baseTitleId)
+{
+	if (!m_instance || !folder || !baseTitleId)
+		return false;
+	const CemuEmbedBrokeredStorage storage{
+		sizeof(storage), CEMU_EMBED_BROKERED_STORAGE_VERSION, this,
+		EnumerateBrokeredFolder, OpenBrokeredFile, ReadBrokeredStream,
+		CloseBrokeredStream, nullptr, nullptr, OpenBrokeredRelativeFile
+	};
+	return CemuEmbed_IdentifyGameFromBrokeredFolder(m_instance,
+		reinterpret_cast<void*>(folder),
+		selectedRelativePath.empty() ? nullptr : selectedRelativePath.c_str(),
+		&storage, baseTitleId) == CEMU_EMBED_OK;
+}
+
 bool Cemu_UWP_HostMain::InstallTitle(StorageFolder^ titleFolder,
 	CemuEmbedInstallType expectedType, uint64_t* installedBaseTitleId)
 {

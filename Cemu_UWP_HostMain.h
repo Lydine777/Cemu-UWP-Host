@@ -27,6 +27,7 @@ namespace Cemu_UWP_Host
 		std::string brokeredRelativePath;
 		Windows::Storage::StorageFolder^ brokeredTitleFolder{ nullptr };
 		bool isExternalStorage{};
+		uint64_t graphicPackTitleId{};
 	};
 
 	struct ActiveAccount
@@ -68,6 +69,9 @@ namespace Cemu_UWP_Host
 		bool LaunchExternalGameFolders(Windows::Storage::StorageFolder^ selectedFolder,
 			const std::string& selectedRelativePath,
 			const std::vector<Windows::Storage::StorageFolder^>& supplementalFolders);
+		bool IdentifyGamePath(const std::string& gamePath, uint64_t* baseTitleId);
+		bool IdentifyBrokeredGame(Windows::Storage::StorageFolder^ folder,
+			const std::string& selectedRelativePath, uint64_t* baseTitleId);
 		bool InstallTitle(Windows::Storage::StorageFolder^ titleFolder,
 			CemuEmbedInstallType expectedType, uint64_t* installedBaseTitleId = nullptr);
 		std::vector<InstalledTitle> GetInstalledTitles();

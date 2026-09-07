@@ -15,19 +15,19 @@ Implemented and currently available:
 
 - Embedded Cemu lifecycle without creating the desktop wxWidgets interface.
 - Native Direct3D 11 rendering inside the UWP application.
-- Xbox controller input, automatic player-one Wii U GamePad profile, and in-game virtual mouse.
+- Xbox controller input, automatic player-one profile, selectable Wii U controller type, and in-game virtual mouse.
 - Installed-game library with base game, update, DLC, region, version, and Graphic Pack information.
 - Direct launch of WUD, WUX, ISO, WUA, WUHB, RPX, and ELF files.
 - Installation of extracted base games, updates, and DLC.
 - Persistent `GamesToInstall` folder for Xbox users without external storage.
 - `keys.txt` import and validation.
-- Graphic Pack detection, import, and automatic activation for compatible titles.
+- Secure community Graphic Pack download through the Windows HTTP stack, manual pack import, and per-game activation controls.
 - Native LEGO Dimensions Toy Pad emulation with persistent virtual tags.
 - Performance metrics toggle and a Settings tab backed by Cemu's embedded settings ABI.
 - Xbox Series S memory guard and a 512 MB disk-backed D3D11 shader-cache budget.
-- Full-app game presentation with the command bar and option tabs hidden while a title runs.
-
-The detailed implementation summary is also available in [`MELHORIAS_IMPLEMENTADAS.txt`](MELHORIAS_IMPLEMENTADAS.txt).
+- Full-client game presentation with the command bar and option tabs hidden while a title runs.
+- Direct execution from external storage through brokered streams without copying the selected game into internal storage.
+- Settings saved immediately when changed; no separate Apply button is required.
 
 ## Xbox Series S memory policy
 
@@ -53,7 +53,7 @@ Memory-related renderer work includes:
 
 ## Rendering and shader status
 
-The custom renderer translates Wii U shader programs through GLSL/SPIR-V/HLSL compatibility paths and creates Direct3D 11 shaders suitable for the Xbox D3D11On12 environment.
+The custom renderer translates Wii U shader programs through GLSL/SPIR-V/HLSL compatibility paths and creates Direct3D 11 shaders suitable for the Xbox D3D11On12 environment. The entire D3D11 backend requires exactly **DirectX 11 Feature Level 11.0**; higher or lower feature levels are rejected instead of selecting alternate renderer paths.
 
 Current graphics work includes:
 
@@ -92,7 +92,8 @@ First-time traversal of a scene can still stutter while new shaders are translat
 - Automatic association of updates and DLC with their base title.
 - Automatic mounting of the installed base game, highest applicable update, and matching DLC.
 - Direct launch of supported single-file and executable formats.
-- Brokered folder access without `broadFileSystemAccess`.
+- Brokered file and folder access without `broadFileSystemAccess`.
+- Direct reads from external storage on Windows and Xbox; games are not staged or copied to internal storage before launch.
 - Recursive scanning of the local installation folder.
 - Persistent confirmed selection: moving focus with the D-pad does not replace the game confirmed with `A`.
 
@@ -116,8 +117,10 @@ An RPX or ELF title may require adjacent RPL modules and supporting content. Rec
 
 ### Storage and installation
 
-- Platform-assisted `StorageFile.CopyAsync` is preferred on Xbox.
-- Providers that cannot perform a direct copy use a bounded sequential-buffer fallback.
+- Installed base games, updates, DLC, keys, and manually imported Graphic Packs are copied only when the user explicitly requests installation or import.
+- External standalone games and extracted game folders run directly through the storage broker on every supported platform.
+- Platform-assisted `StorageFile.CopyAsync` is preferred for operations that genuinely install content.
+- Providers that cannot perform an installation copy use a bounded sequential-buffer fallback.
 - Storage metadata requests are batched to reduce broker IPC overhead.
 - Large files and Graphic Packs are copied in chunks.
 - Successfully processed extracted content receives a `cemu-installed.txt` marker.
@@ -168,16 +171,17 @@ Available tabs:
 
 - **My games**: content installation, direct file/folder launch, `keys.txt`, local scan, Graphic Packs, and installed games.
 - **Toy Pad**: native LEGO Dimensions figure and tag management.
+- **Graphic packs**: four-column per-game catalog with pack name, category, description, and an individual enable/disable switch.
 - **Settings**: global scalar settings exposed by the embedded Cemu runtime.
 - **Help and errors**: diagnostics and actionable user-facing errors.
 
 The **Getting started** guide always opens collapsed and can be expanded temporarily when needed.
 
-The Settings tab uses an adaptive maximum height and a visible vertical scrollbar. The other tabs remain compact so they do not unnecessarily cover the game surface. The host requests full-screen mode and uses the complete Xbox CoreWindow bounds instead of the TV-safe inset. When a game starts, the top bar and all option tabs disappear and the emulator surface expands to the full display area.
+While no game is running, every tab extends from the command bar to the bottom of the interface. Long settings, diagnostics, libraries, and Graphic Pack collections scroll inside that full-height area. The host does not request a second fullscreen transition on launch; Xbox already supplies the app window at the correct display size. When a game starts, both the top command bar and the option tabs disappear and the emulator surface expands across the complete client area.
 
 ## Settings tab
 
-The backend exposes a versioned `CemuEmbedSettings` structure. The Settings tab reads and saves the relevant scalar global options from that ABI. Performance metrics are controlled separately by the top-bar button:
+The backend exposes a versioned `CemuEmbedSettings` structure. The Settings tab reads the relevant scalar global options from that ABI and saves each change immediately. There is no Apply settings button. Performance metrics are controlled separately by the top-bar button:
 
 - CPU mode and console language.
 - Boot sound and screen-saver behavior.
@@ -188,7 +192,7 @@ The backend exposes a versioned `CemuEmbedSettings` structure. The Settings tab 
 - Audio backend, delay, channel modes, and volumes.
 - Skylanders portal, Disney Infinity base, and LEGO Dimensions Toy Pad emulation.
 
-Renderer/backend selection is intentionally host-owned and fixed to Direct3D 11 on Xbox. Paths, accounts, Graphic Packs, controller profiles, and installed content use dedicated host APIs rather than the scalar settings structure. USB-device and startup-only changes apply after restarting the application.
+Renderer/backend selection is intentionally host-owned and fixed to Direct3D 11 Feature Level 11.0 throughout the UWP renderer. Paths, accounts, Graphic Packs, controller profiles, and installed content use dedicated host APIs rather than the scalar settings structure. USB-device and startup-only changes apply after restarting the application.
 
 ## LEGO Dimensions Toy Pad
 
@@ -202,7 +206,8 @@ It supports:
 - Persistent tag files in application data.
 - Saving upgrades and other tag changes written by the game.
 - Optional Toy Pad activation from Settings.
-- `View + Menu` to show or hide the host options during a running game.
+
+Host options remain hidden while a title is running so the emulator owns the complete client area. Stop or leave the running title before returning to the tabs.
 
 Select both a figure and a Toy Pad position before placing it. The Toy Pad must be enabled before Cemu initializes; changing its USB setting therefore requires an application restart.
 
@@ -304,7 +309,7 @@ For a non-default repository layout:
 
 The project produces an x64 application bundle and uses `Cemu-UWP-Host_TemporaryKey.pfx` for development signing. Install or trust the corresponding certificate when required by the deployment method. Replace the development signing identity and the project-specific `AppInstallerUri` before distributing a package.
 
-The current package manifest version is **1.0.6.0**.
+The current package manifest version is **1.0.8.0**.
 
 ## Using the application
 
@@ -332,7 +337,7 @@ The same command accepts base games, updates, and DLC. Metadata determines the c
 - Use **Open game file** for WUD, WUX, ISO, WUA, WUHB, RPX, or ELF.
 - Use **Open game folder** for extracted titles, supported NUS-style content, or executable layouts requiring adjacent files.
 
-Files opened through a picker use brokered UWP access. Content copied into application-local storage remains available without reopening the picker.
+Files and folders opened through a picker use brokered UWP access. The selected game is read directly from its source storage on both Windows and Xbox and is not copied into `LocalState`. Installed content deliberately copied into application storage remains available independently of the original source.
 
 ### Use `GamesToInstall` without external storage
 
@@ -357,13 +362,14 @@ The backend validates the file, replaces the application-data `keys.txt`, and re
 
 This project does not provide title keys, common keys, games, firmware, account data, or copyrighted console files.
 
-### Import Graphic Packs
+### Download and manage Graphic Packs
 
-1. Open **My games**.
-2. Select **Import enhancements**.
-3. Choose a `graphicPacks` directory or a parent directory containing packs.
+1. Open **Graphic packs**.
+2. Select **Download community packs** to retrieve the latest official collection, or select **Install packs** to import a local directory.
+3. Choose an installed game.
+4. Enable or disable each compatible pack individually. Changes are saved immediately and used on the next launch.
 
-The host scans for valid `rules.txt` files, copies their pack directories into persistent application data, reloads the packs, and enables compatible packs for installed titles. The same activation is reapplied after library refresh and before launch.
+Community downloads use `Windows::Web::Http::HttpClient`, the Windows certificate store, GitHub's current release metadata, a 256 MiB safety limit, path-safe ZIP extraction, and transactional staging/backup directories. Local imports scan for valid `rules.txt` files and copy only the selected pack directories into persistent application data. Downloading, importing, refreshing, or launching does not automatically enable every compatible pack.
 
 Graphic Packs can change shaders and executable behavior. If a game develops artifacts or crashes, retest without title-specific packs before reporting a renderer regression.
 
@@ -455,14 +461,13 @@ Do not compare a warm desktop cache directly with a cold Xbox cache. Keep game v
 ## Project structure
 
 - `App.xaml` / `App.xaml.cpp`: application lifecycle, controller-pointer policy, suspension, and resume.
-- `DirectXPage.xaml`: top bar, theme, library, Toy Pad, Settings, diagnostics, and render surface.
-- `DirectXPage.xaml.cpp`: UI behavior, controller navigation, storage scanning, installation, keys, Graphic Packs, and Toy Pad actions.
+- `DirectXPage.xaml`: full-height tabs, top bar, four-column Graphic Pack grid, theme, library, Toy Pad, Settings, diagnostics, and render surface.
+- `DirectXPage.xaml.cpp`: UI behavior, immediate settings persistence, controller navigation, direct external-storage launch, storage scanning, installation, keys, Graphic Packs, and Toy Pad actions.
 - `Cemu_UWP_HostMain.cpp`: C++/CX adapter between UWP storage objects and the `CemuEmbed` C ABI.
 - `Common/DeviceResources.cpp`: Direct3D device and XAML swap-chain setup.
 - `Package.appxmanifest`: UWP identity, capabilities, and visual assets.
 - `Cemu/src/Cemu/CemuEmbed.h`: public embedded-runtime ABI in the adjacent modified Cemu tree.
 - `Cemu/src/Cafe/HW/Latte/Renderer/D3D11/`: custom D3D11 renderer and Series S policies.
-- `MELHORIAS_IMPLEMENTADAS.txt`: implementation summary in Portuguese.
 - `LICENSE`: Apache License 2.0 terms for this host repository.
 
 ## Security and legal notice

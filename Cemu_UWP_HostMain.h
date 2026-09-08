@@ -28,6 +28,7 @@ namespace Cemu_UWP_Host
 		Windows::Storage::StorageFolder^ brokeredTitleFolder{ nullptr };
 		bool isExternalStorage{};
 		uint64_t graphicPackTitleId{};
+		std::vector<uint8_t> iconTga;
 	};
 
 	struct ActiveAccount
@@ -82,6 +83,7 @@ namespace Cemu_UWP_Host
 		bool DownloadGraphicPacks(uint32_t* downloadedPackCount = nullptr,
 			bool* alreadyCurrent = nullptr);
 		bool ClearShaderCaches(uint32_t* removedEntryCount = nullptr);
+		bool GetShaderCount(uint64_t baseTitleId, uint32_t* shaderCount);
 		bool InstallGraphicPacks(Windows::Storage::StorageFolder^ graphicPacksFolder,
 			uint32_t* importedPackCount = nullptr);
 		bool SetGraphicPacksEnabledForTitle(uint64_t baseTitleId, bool enabled,

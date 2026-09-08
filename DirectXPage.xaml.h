@@ -45,17 +45,17 @@ namespace Cemu_UWP_Host
 		void ClearShaderCache_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void RefreshLibrary_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void ScanExternalStorage_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void RescanExternalStorage_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void ForgetExternalStorage_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void InstalledGames_SelectionChanged(Platform::Object^ sender,
 			Windows::UI::Xaml::Controls::SelectionChangedEventArgs^ args);
 		void InstalledGames_ItemClick(Platform::Object^ sender,
 			Windows::UI::Xaml::Controls::ItemClickEventArgs^ args);
 		void StartGame_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
-		void ToggleMetrics_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
-		void ToggleTabs_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void PerformanceMetricsCheckChanged(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
+		void NavigationButton_Click(Platform::Object^ sender, Windows::UI::Xaml::RoutedEventArgs^ args);
 		void ToolTabs_SelectionChanged(Platform::Object^ sender,
 			Windows::UI::Xaml::Controls::SelectionChangedEventArgs^ args);
-		void ToggleGettingStarted_Click(Platform::Object^ sender,
-			Windows::UI::Xaml::RoutedEventArgs^ args);
 		void SettingsSelectionChanged(Platform::Object^ sender,
 			Windows::UI::Xaml::Controls::SelectionChangedEventArgs^ args);
 		void SettingsCheckChanged(Platform::Object^ sender,
@@ -76,7 +76,6 @@ namespace Cemu_UWP_Host
 		void FocusEmulatorInput();
 		void SetSystemPointerForUi(bool enabled);
 		void SetTabsVisible(bool visible);
-		void SetGettingStartedExpanded(bool expanded);
 		void SetGamePresentation(bool running);
 		void SetExternalLoadingVisible(bool visible);
 		void AppendError(const std::string& message);
@@ -84,11 +83,15 @@ namespace Cemu_UWP_Host
 		void OnBrokeredProgress(uint64_t bytesCopied, uint64_t totalBytes, const std::string& relativePath);
 		void BeginInstall();
 		void BeginExternalLaunch(std::function<bool()> launchOperation);
-		void BeginExternalStorageScan(Windows::Storage::StorageFolder^ storageRoot);
+		void BeginExternalStorageScan(const std::vector<Windows::Storage::StorageFolder^>& storageRoots);
+		void RememberExternalStorageFolder(Windows::Storage::StorageFolder^ storageRoot);
+		void RestoreExternalStorageFolders(bool showEmptyStatus = false);
+		void ForgetExternalStorageFolders();
 		void RefreshLibrary(bool scanLocalFolder = false);
 		void DeleteInstalledTitle(uint64_t titleId);
 		void SetLibraryActionsEnabled(bool enabled);
 		void UpdateStartButton();
+		void UpdateSelectedShaderCount();
 		int FindInstalledTitleIndex(uint64_t titleId) const;
 		void UpdateGamepadStatus();
 		CemuEmbedGamepadState PublishGamepadState();
@@ -130,7 +133,6 @@ namespace Cemu_UWP_Host
 		bool m_optionsChordHeld = false;
 		bool m_virtualMouseLeftDown = false;
 		bool m_performanceMetricsVisible = false;
-		bool m_gettingStartedExpanded = false;
 		bool m_loadingSettings = false;
 		bool m_loadingGraphicPacks = false;
 		uint64_t m_selectedTitleId = 0;

@@ -595,6 +595,12 @@ bool Cemu_UWP_HostMain::SetGraphicPacksEnabledForTitle(uint64_t baseTitleId,
 		baseTitleId, enabled ? 1 : 0, affectedPackCount) == CEMU_EMBED_OK;
 }
 
+bool Cemu_UWP_HostMain::GetShaderCount(uint64_t baseTitleId, uint32_t* shaderCount)
+{
+	return m_instance && CemuEmbed_GetShaderCount(m_instance, baseTitleId,
+		shaderCount) == CEMU_EMBED_OK;
+}
+
 std::vector<GraphicPack> Cemu_UWP_HostMain::GetGraphicPacksForTitle(uint64_t baseTitleId)
 {
 	std::vector<GraphicPack> packs;
@@ -704,7 +710,7 @@ CemuEmbedResult __cdecl Cemu_UWP_HostMain::InstalledTitleFound(
 		title->abi_version != CEMU_EMBED_LIBRARY_VERSION)
 		return CEMU_EMBED_INVALID_ARGUMENT;
 	auto& titles = *static_cast<std::vector<InstalledTitle>*>(userData);
-	titles.push_back({
+	InstalledTitle installed{
 		title->title_id,
 		title->base_version,
 		title->effective_version,
@@ -716,7 +722,11 @@ CemuEmbedResult __cdecl Cemu_UWP_HostMain::InstalledTitleFound(
 		title->enabled_graphic_pack_count,
 		title->name_utf8 ? title->name_utf8 : "",
 		title->region_utf8 ? title->region_utf8 : ""
-	});
+	};
+	if (title->icon_tga_data && title->icon_tga_size)
+		installed.iconTga.assign(title->icon_tga_data,
+			title->icon_tga_data + title->icon_tga_size);
+	titles.emplace_back(std::move(installed));
 	return CEMU_EMBED_OK;
 }
 

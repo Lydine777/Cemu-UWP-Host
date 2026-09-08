@@ -14,6 +14,7 @@
 #include <d2d1effects_2.h>
 #include <dwrite_3.h>
 #include <wincodec.h>
+#include <robuffer.h>
 #include <DirectXColors.h>
 #include <DirectXMath.h>
 #include <memory>

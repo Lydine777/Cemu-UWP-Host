@@ -2,6 +2,7 @@
 #include "DirectXPage.xaml.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <iomanip>
@@ -13,6 +14,7 @@ using namespace concurrency;
 using namespace Windows::Foundation;
 using namespace Windows::Gaming::Input;
 using namespace Windows::Storage;
+using namespace Windows::Storage::AccessCache;
 using namespace Windows::Storage::Pickers;
 using namespace Windows::Storage::Streams;
 using namespace Windows::System;
@@ -20,6 +22,7 @@ using namespace Windows::UI::Core;
 using namespace Windows::UI::Xaml;
 using namespace Windows::UI::Xaml::Controls;
 using namespace Windows::UI::Xaml::Media;
+using namespace Windows::UI::Xaml::Media::Imaging;
 
 namespace
 {
@@ -27,6 +30,8 @@ const auto VisibleValue = static_cast<Windows::UI::Xaml::Visibility>(0);
 const auto CollapsedValue = static_cast<Windows::UI::Xaml::Visibility>(1);
 constexpr wchar_t LocalInstallFolderName[] = L"GamesToInstall";
 constexpr wchar_t LocalGraphicPackMarkerName[] = L"cemu-graphic-pack-installed.txt";
+constexpr wchar_t ExternalFolderAccessMetadataPrefix[] = L"CemuUwpExternalRoot|";
+constexpr wchar_t PerformanceMetricsSettingName[] = L"PerformanceMetricsVisible";
 
 Platform::String^ WinRtString(const wchar_t* value)
 {
@@ -417,9 +422,6 @@ struct __declspec(uuid("45D64A29-A63E-4CB6-B498-5781D298CB4F")) ICoreWindowInter
 DirectXPage::DirectXPage()
 {
 	InitializeComponent();
-	// Always open the library in its compact layout. The guide remains available
-	// through its toggle, but an older persisted expanded state is not restored.
-	SetGettingStartedExpanded(false);
 	// Registering WGI events on the XAML thread. The host mirrors a plain
 	// controller snapshot into Cemu, so the DLL never has to use a WGI object
 	// from SDL's worker apartment on Xbox.
@@ -552,7 +554,7 @@ void DirectXPage::OnRendering(Platform::Object^, Platform::Object^)
 	{
 		const bool showOptions = tabsPanel->Visibility != VisibleValue;
 		if (showOptions)
-			toolTabs->SelectedIndex = 1;
+			toolTabs->SelectedIndex = 2;
 		SetTabsVisible(showOptions);
 	}
 	m_optionsChordHeld = optionsChord;
@@ -706,7 +708,7 @@ void DirectXPage::DownloadGraphicPacks_Click(Platform::Object^, RoutedEventArgs^
 			page->SetLibraryActionsEnabled(true);
 			page->launchStatus->Text = "Failed to download Graphic Packs; see Help and errors";
 			page->SetTabsVisible(true);
-			page->toolTabs->SelectedIndex = 4;
+			page->toolTabs->SelectedIndex = 5;
 			page->UpdateStartButton();
 			return;
 		}
@@ -718,6 +720,70 @@ void DirectXPage::DownloadGraphicPacks_Click(Platform::Object^, RoutedEventArgs^
 		page->launchStatus->Text = FromUtf8(status.str());
 		page->RefreshLibrary();
 	}, task_continuation_context::use_current());
+}
+
+WriteableBitmap^ DecodeGameIcon(const std::vector<uint8_t>& data)
+{
+	// Wii U iconTex.tga uses uncompressed 24-bit or 32-bit true-color pixels.
+	if (data.size() < 18 || data[1] != 0 || data[2] != 2)
+		return nullptr;
+	const uint32_t width = static_cast<uint32_t>(data[12]) |
+		(static_cast<uint32_t>(data[13]) << 8);
+	const uint32_t height = static_cast<uint32_t>(data[14]) |
+		(static_cast<uint32_t>(data[15]) << 8);
+	const uint32_t bytesPerPixel = data[16] / 8;
+	const size_t offset = 18u + data[0];
+	if (!width || !height || width > 1024 || height > 1024 ||
+		(bytesPerPixel != 3 && bytesPerPixel != 4) ||
+		offset + static_cast<size_t>(width) * height * bytesPerPixel > data.size())
+		return nullptr;
+
+	auto bitmap = ref new WriteableBitmap(static_cast<int>(width), static_cast<int>(height));
+	Microsoft::WRL::ComPtr<IBufferByteAccess> bufferAccess;
+	if (FAILED(reinterpret_cast<IInspectable*>(bitmap->PixelBuffer)->QueryInterface(
+		IID_PPV_ARGS(bufferAccess.GetAddressOf()))))
+		return nullptr;
+	byte* destination{};
+	if (FAILED(bufferAccess->Buffer(&destination)) || !destination)
+		return nullptr;
+	const bool topOrigin = (data[17] & 0x20) != 0;
+	for (uint32_t y = 0; y < height; ++y)
+	{
+		const uint32_t sourceY = topOrigin ? y : height - 1 - y;
+		const auto* source = data.data() + offset +
+			static_cast<size_t>(sourceY) * width * bytesPerPixel;
+		auto* target = destination + static_cast<size_t>(y) * width * 4;
+		for (uint32_t x = 0; x < width; ++x)
+		{
+			target[x * 4 + 0] = source[x * bytesPerPixel + 0];
+			target[x * 4 + 1] = source[x * bytesPerPixel + 1];
+			target[x * 4 + 2] = source[x * bytesPerPixel + 2];
+			target[x * 4 + 3] = bytesPerPixel == 4 ? source[x * 4 + 3] : 255;
+		}
+	}
+	bitmap->Invalidate();
+	return bitmap;
+}
+
+bool IsCemuExternalFolderAccessEntry(const AccessListEntry& entry)
+{
+	if (!entry.Metadata || !entry.Metadata->Data())
+		return false;
+	const auto metadata = entry.Metadata->Data();
+	const auto prefixLength = wcslen(ExternalFolderAccessMetadataPrefix);
+	return wcsncmp(metadata, ExternalFolderAccessMetadataPrefix, prefixLength) == 0;
+}
+
+std::vector<Platform::String^> GetPersistedExternalFolderTokens()
+{
+	std::vector<Platform::String^> tokens;
+	auto accessList = StorageApplicationPermissions::FutureAccessList;
+	for (const auto& entry : accessList->Entries)
+	{
+		if (IsCemuExternalFolderAccessEntry(entry))
+			tokens.emplace_back(entry.Token);
+	}
+	return tokens;
 }
 
 void DirectXPage::InstallGraphicPacks_Click(Platform::Object^, RoutedEventArgs^)
@@ -916,7 +982,7 @@ void DirectXPage::ClearShaderCache_Click(Platform::Object^, RoutedEventArgs^)
 			{
 				page->launchStatus->Text = "Could not clear the shader cache; see Help and errors";
 				page->SetTabsVisible(true);
-				page->toolTabs->SelectedIndex = 4;
+				page->toolTabs->SelectedIndex = 5;
 			}
 			else
 			{
@@ -945,35 +1011,140 @@ void DirectXPage::ScanExternalStorage_Click(Platform::Object^, RoutedEventArgs^)
 	{
 		auto page = weakThis.Resolve<DirectXPage>();
 		if (page && storageRoot)
-			page->BeginExternalStorageScan(storageRoot);
+		{
+			page->RememberExternalStorageFolder(storageRoot);
+			page->RestoreExternalStorageFolders();
+		}
 	}, task_continuation_context::use_current());
 }
 
-void DirectXPage::BeginExternalStorageScan(StorageFolder^ storageRoot)
+void DirectXPage::RescanExternalStorage_Click(Platform::Object^, RoutedEventArgs^)
 {
-	if (!storageRoot || !m_main || !m_cemuReady || m_libraryBusy || m_gameRunning)
+	RestoreExternalStorageFolders(true);
+}
+
+void DirectXPage::ForgetExternalStorage_Click(Platform::Object^, RoutedEventArgs^)
+{
+	if (!m_main || !m_cemuReady || m_libraryBusy || m_gameRunning)
+		return;
+	ForgetExternalStorageFolders();
+	m_externalTitles.clear();
+	m_selectedTitleId = 0;
+	launchStatus->Text = "External folders removed";
+	RefreshLibrary();
+}
+
+void DirectXPage::RememberExternalStorageFolder(StorageFolder^ storageRoot)
+{
+	if (!storageRoot)
+		return;
+	auto accessList = StorageApplicationPermissions::FutureAccessList;
+	std::wstring metadata = ExternalFolderAccessMetadataPrefix;
+	if (storageRoot->Path)
+		metadata += storageRoot->Path->Data();
+	else if (storageRoot->Name)
+		metadata += storageRoot->Name->Data();
+	for (const auto& entry : accessList->Entries)
+	{
+		if (entry.Metadata && _wcsicmp(entry.Metadata->Data(), metadata.c_str()) == 0)
+			return;
+	}
+	accessList->Add(storageRoot, ref new Platform::String(metadata.c_str()));
+}
+
+void DirectXPage::ForgetExternalStorageFolders()
+{
+	auto accessList = StorageApplicationPermissions::FutureAccessList;
+	for (const auto& token : GetPersistedExternalFolderTokens())
+	{
+		try
+		{
+			accessList->Remove(token);
+		}
+		catch (Platform::Exception^)
+		{
+			// A stale token is already unavailable and does not need user action.
+		}
+	}
+}
+
+void DirectXPage::RestoreExternalStorageFolders(bool showEmptyStatus)
+{
+	if (!m_main || !m_cemuReady || m_libraryBusy || m_gameRunning)
+		return;
+	const auto tokens = GetPersistedExternalFolderTokens();
+	if (tokens.empty())
+	{
+		m_externalTitles.clear();
+		if (showEmptyStatus)
+			launchStatus->Text = "No external folders saved";
+		RefreshLibrary();
+		return;
+	}
+	launchStatus->Text = "Restoring external game folders...";
+	Platform::WeakReference weakThis(this);
+	create_task([tokens]()
+	{
+		std::vector<StorageFolder^> roots;
+		auto accessList = StorageApplicationPermissions::FutureAccessList;
+		for (const auto& token : tokens)
+		{
+			try
+			{
+				auto root = create_task(accessList->GetFolderAsync(token)).get();
+				if (root)
+					roots.emplace_back(root);
+			}
+			catch (Platform::Exception^)
+			{
+				// Keep the token so a temporarily disconnected drive can return later.
+			}
+		}
+		return roots;
+	}).then([weakThis](std::vector<StorageFolder^> restored)
+	{
+		auto page = weakThis.Resolve<DirectXPage>();
+		if (!page)
+			return;
+		if (restored.empty())
+		{
+			page->m_externalTitles.clear();
+			page->launchStatus->Text = "Saved external folders are disconnected or unavailable";
+			page->RefreshLibrary();
+			return;
+		}
+		page->BeginExternalStorageScan(restored);
+	}, task_continuation_context::use_current());
+}
+
+void DirectXPage::BeginExternalStorageScan(const std::vector<StorageFolder^>& storageRoots)
+{
+	if (storageRoots.empty() || !m_main || !m_cemuReady || m_libraryBusy || m_gameRunning)
 		return;
 	m_libraryBusy = true;
 	SetLibraryActionsEnabled(false);
 	startButton->IsEnabled = false;
-	launchStatus->Text = "Scanning selected external storage...";
+	launchStatus->Text = "Scanning saved external storage...";
 	Platform::WeakReference weakThis(this);
 	const auto main = m_main;
-	create_task([storageRoot, main]()
+	create_task([storageRoots, main]()
 	{
 		ExternalStorageScanResult scanResult{};
-		try
+		for (const auto& storageRoot : storageRoots)
 		{
-			scanResult.storageCount = 1;
-			FindExternalStorageContent(storageRoot, scanResult);
-		}
-		catch (Platform::Exception^)
-		{
-			++scanResult.inaccessibleFolderCount;
-		}
-		catch (...)
-		{
-			++scanResult.inaccessibleFolderCount;
+			try
+			{
+				++scanResult.storageCount;
+				FindExternalStorageContent(storageRoot, scanResult);
+			}
+			catch (Platform::Exception^)
+			{
+				++scanResult.inaccessibleFolderCount;
+			}
+			catch (...)
+			{
+				++scanResult.inaccessibleFolderCount;
+			}
 		}
 		RemoveDuplicateExternalPaths(scanResult);
 		if (main)
@@ -1060,7 +1231,7 @@ void DirectXPage::DeleteInstalledTitle(uint64_t titleId)
 				page->SetLibraryActionsEnabled(true);
 				page->launchStatus->Text = "Could not delete the installed game; see Help and errors";
 				page->SetTabsVisible(true);
-				page->toolTabs->SelectedIndex = 4;
+				page->toolTabs->SelectedIndex = 5;
 				page->UpdateStartButton();
 				return;
 			}
@@ -1232,20 +1403,25 @@ void DirectXPage::StartGame_Click(Platform::Object^, RoutedEventArgs^)
 	}, task_continuation_context::use_current());
 }
 
-void DirectXPage::ToggleMetrics_Click(Platform::Object^, RoutedEventArgs^)
+void DirectXPage::PerformanceMetricsCheckChanged(Platform::Object^, RoutedEventArgs^)
 {
-	if (!m_main || !m_cemuReady)
+	if (m_loadingSettings || !m_main || !m_cemuReady)
 		return;
 
-	const bool show = !m_performanceMetricsVisible;
+	const bool show = performanceMetricsCheck->IsChecked->Value;
 	if (!m_main->SetPerformanceMetrics(show))
 	{
+		m_loadingSettings = true;
+		performanceMetricsCheck->IsChecked = m_performanceMetricsVisible;
+		m_loadingSettings = false;
 		AppendError("Could not change the Cemu performance metrics overlay.");
 		return;
 	}
 
 	m_performanceMetricsVisible = show;
-	metricsButtonText->Text = show ? "Hide metrics" : "Show metrics";
+	ApplicationData::Current->LocalSettings->Values->Insert(
+		WinRtString(PerformanceMetricsSettingName), PropertyValue::CreateBoolean(show));
+	settingsStatus->Text = "Settings are saved automatically when changed.";
 }
 
 void DirectXPage::PlaceDimensionsFigure_Click(Platform::Object^, RoutedEventArgs^)
@@ -1554,70 +1730,104 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 		installedGamesList->Items->Clear();
 		for (const auto& title : m_installedTitles)
 		{
-			std::ostringstream line;
-			line << title.name;
+			std::ostringstream subtitle;
 			if (!title.localGamePath.empty())
 			{
-				line << "\n" << (title.isExternalStorage
-					? "External storage item"
-					: "Local game file")
-					<< "  |  Format: " << title.localGameFormat
-					<< (title.isExternalStorage
-						? ((title.localGameFormat == "EXTRACTED" || title.localGameFormat == "NUS TITLE")
-							? "  |  Mounted directly from external storage (not installed)"
-							: "  |  Runs directly from external storage (never copied)")
-						: "  |  Ready to launch from GamesToInstall");
+				subtitle << title.localGameFormat << " · "
+					<< (title.isExternalStorage ? "External" : "GamesToInstall");
 			}
 			else
 			{
-				line << "\nTitle ID: " << std::uppercase << std::hex << std::setw(16)
-					<< std::setfill('0') << title.titleId << std::dec
-					<< "  |  Version: v" << title.effectiveVersion
-					<< " (base v" << title.baseVersion;
-				if (title.updateVersion)
-					line << ", update v" << title.updateVersion;
-				else
-					line << ", no update";
-				line << ")  |  DLC: ";
-				if (title.dlcCount)
-					line << title.dlcCount << " installed, v" << title.dlcVersion;
-				else
-					line << "not installed";
-				line << "  |  Region: " << title.regionName
-					<< "  |  Graphic packs: " << title.enabledGraphicPackCount
-					<< "/" << title.compatibleGraphicPackCount << " active";
+				subtitle << title.regionName << " · v" << title.effectiveVersion
+					<< " · Packs " << title.enabledGraphicPackCount
+					<< "/" << title.compatibleGraphicPackCount;
 			}
 
 			auto item = ref new ListViewItem();
 			item->HorizontalContentAlignment =
 				::Windows::UI::Xaml::HorizontalAlignment::Stretch;
-			auto row = ref new Grid();
-			auto textColumn = ref new ColumnDefinition();
-			textColumn->Width = GridLength(1.0,
-				::Windows::UI::Xaml::GridUnitType::Star);
-			row->ColumnDefinitions->Append(textColumn);
-			auto details = ref new TextBlock();
-			details->Text = FromUtf8(line.str());
-			details->TextWrapping = ::Windows::UI::Xaml::TextWrapping::Wrap;
-			details->FontFamily = ref new Windows::UI::Xaml::Media::FontFamily(L"Consolas");
-			details->FontSize = 14;
-			details->Foreground = ref new Windows::UI::Xaml::Media::SolidColorBrush(
-				Windows::UI::Colors::White);
-			details->Margin = Thickness(2);
-			row->Children->Append(details);
+			item->VerticalContentAlignment =
+				::Windows::UI::Xaml::VerticalAlignment::Stretch;
+
+			auto card = ref new Border();
+			card->CornerRadius = ::Windows::UI::Xaml::CornerRadius(16);
+			card->BorderThickness = Thickness(1);
+			card->BorderBrush = safe_cast<Brush^>(Resources->Lookup("DividerBrush"));
+			card->Background = safe_cast<Brush^>(Resources->Lookup("CardBrush"));
+			auto cardGrid = ref new Grid();
+			auto artRow = ref new RowDefinition();
+			artRow->Height = GridLength(132);
+			cardGrid->RowDefinitions->Append(artRow);
+			auto infoRow = ref new RowDefinition();
+			infoRow->Height = GridLength(1, GridUnitType::Star);
+			cardGrid->RowDefinitions->Append(infoRow);
+
+			auto art = ref new Border();
+			art->Background = safe_cast<Brush^>(Resources->Lookup("SageBrush"));
+			art->CornerRadius = ::Windows::UI::Xaml::CornerRadius(15, 15, 0, 0);
+			if (auto bitmap = DecodeGameIcon(title.iconTga))
+			{
+				auto image = ref new Image();
+				image->Source = bitmap;
+				image->Stretch = Stretch::UniformToFill;
+				art->Child = image;
+			}
+			else
+			{
+				auto fallback = ref new FontIcon();
+				fallback->Glyph = L"\xE7FC";
+				fallback->FontSize = 46;
+				fallback->Foreground = safe_cast<Brush^>(Resources->Lookup("AccentBlueBrush"));
+				fallback->HorizontalAlignment =
+					::Windows::UI::Xaml::HorizontalAlignment::Center;
+				fallback->VerticalAlignment =
+					::Windows::UI::Xaml::VerticalAlignment::Center;
+				art->Child = fallback;
+			}
+			cardGrid->Children->Append(art);
+
+			auto info = ref new StackPanel();
+			Grid::SetRow(info, 1);
+			info->Margin = Thickness(12, 9, 12, 9);
+			auto source = ref new TextBlock();
+			source->Text = title.localGamePath.empty() ? "INSTALLED" :
+				(title.isExternalStorage ? "EXTERNAL STORAGE" : "LOCAL GAMES");
+			source->FontFamily = ref new Windows::UI::Xaml::Media::FontFamily(L"Consolas");
+			source->FontSize = 9;
+			source->Foreground = safe_cast<Brush^>(Resources->Lookup("AccentBlueBrush"));
+			info->Children->Append(source);
+			auto name = ref new TextBlock();
+			name->Text = FromUtf8(title.name);
+			name->FontSize = 14;
+			name->FontWeight = Windows::UI::Text::FontWeights::SemiBold;
+			name->Foreground = safe_cast<Brush^>(Resources->Lookup("TextBrush"));
+			name->TextWrapping = TextWrapping::Wrap;
+			name->MaxLines = 2;
+			name->TextTrimming = TextTrimming::CharacterEllipsis;
+			name->Margin = Thickness(0, 3, 0, 2);
+			info->Children->Append(name);
+			auto metadata = ref new TextBlock();
+			metadata->Text = FromUtf8(subtitle.str());
+			metadata->FontFamily = ref new Windows::UI::Xaml::Media::FontFamily(L"Consolas");
+			metadata->FontSize = 9;
+			metadata->Foreground = safe_cast<Brush^>(Resources->Lookup("MutedTextBrush"));
+			metadata->TextTrimming = TextTrimming::CharacterEllipsis;
+			info->Children->Append(metadata);
+			cardGrid->Children->Append(info);
 			if (title.localGamePath.empty())
 			{
-				auto buttonColumn = ref new ColumnDefinition();
-				buttonColumn->Width = GridLength(1.0,
-					::Windows::UI::Xaml::GridUnitType::Auto);
-				row->ColumnDefinitions->Append(buttonColumn);
 				auto deleteButton = ref new Button();
-				deleteButton->Content = ref new Platform::String(L"Delete");
-				deleteButton->Margin = Thickness(12, 0, 2, 0);
+				deleteButton->Content = ref new Platform::String(L"×");
+				deleteButton->Width = 30;
+				deleteButton->Height = 30;
+				deleteButton->Padding = Thickness(0);
+				deleteButton->Margin = Thickness(0, 7, 7, 0);
+				deleteButton->HorizontalAlignment =
+					::Windows::UI::Xaml::HorizontalAlignment::Right;
 				deleteButton->VerticalAlignment =
-					::Windows::UI::Xaml::VerticalAlignment::Center;
+					::Windows::UI::Xaml::VerticalAlignment::Top;
+				deleteButton->Background = safe_cast<Brush^>(Resources->Lookup("CardBrush"));
 				deleteButton->IsEnabled = !m_gameRunning;
-				Grid::SetColumn(deleteButton, 1);
 				const uint64_t titleId = title.titleId;
 				Platform::WeakReference weakThis(this);
 				deleteButton->Click += ref new RoutedEventHandler(
@@ -1627,9 +1837,10 @@ void DirectXPage::RefreshLibrary(bool scanLocalFolder)
 						if (page)
 							page->DeleteInstalledTitle(titleId);
 					});
-				row->Children->Append(deleteButton);
+				cardGrid->Children->Append(deleteButton);
 			}
-			item->Content = row;
+			card->Child = cardGrid;
+			item->Content = card;
 			installedGamesList->Items->Append(item);
 		}
 		const int restoredIndex = FindInstalledTitleIndex(m_selectedTitleId);
@@ -1695,6 +1906,8 @@ void DirectXPage::SetLibraryActionsEnabled(bool enabled)
 	importKeysButton->IsEnabled = canUse && !m_gameRunning;
 	refreshLibraryButton->IsEnabled = canUse;
 	scanExternalStorageButton->IsEnabled = canUse && !m_gameRunning;
+	rescanExternalStorageButton->IsEnabled = canUse && !m_gameRunning;
+	forgetExternalStorageButton->IsEnabled = canUse && !m_gameRunning;
 	downloadGraphicPacksButton->IsEnabled = canUse && !m_gameRunning;
 	installGraphicPacksButton->IsEnabled = canUse && !m_gameRunning;
 	installGraphicPacksTabButton->IsEnabled = canUse && !m_gameRunning;
@@ -1705,24 +1918,49 @@ void DirectXPage::SetLibraryActionsEnabled(bool enabled)
 	installedGamesList->IsEnabled = enabled;
 }
 
-void DirectXPage::ToggleTabs_Click(Platform::Object^, RoutedEventArgs^)
+void DirectXPage::NavigationButton_Click(Platform::Object^ sender, RoutedEventArgs^)
 {
-	SetTabsVisible(tabsPanel->Visibility != VisibleValue);
+	auto element = dynamic_cast<FrameworkElement^>(sender);
+	auto tag = element ? dynamic_cast<Platform::String^>(element->Tag) : nullptr;
+	if (!tag || tag->IsEmpty())
+		return;
+	const int index = static_cast<int>(wcstol(tag->Data(), nullptr, 10));
+	if (index < 0 || index >= static_cast<int>(toolTabs->Items->Size))
+		return;
+	toolTabs->SelectedIndex = index;
+	SetTabsVisible(true);
 }
 
 void DirectXPage::ToolTabs_SelectionChanged(
 	Platform::Object^, Windows::UI::Xaml::Controls::SelectionChangedEventArgs^)
 {
+	static const wchar_t* tabNames[] = {
+		L"Home", L"Library", L"Toy Pad", L"Graphic packs", L"Settings", L"Help and errors"
+	};
+	const int selectedIndex = toolTabs->SelectedIndex;
+	std::array<Button^, 6> navigationButtons{
+		homeNavigationButton, libraryNavigationButton, toyPadNavigationButton,
+		graphicPacksNavigationButton, settingsNavigationButton, helpNavigationButton
+	};
+	auto transparent = ref new SolidColorBrush(Windows::UI::Colors::Transparent);
+	auto selectedBackground = safe_cast<Brush^>(Resources->Lookup("AccentBlueBrush"));
+	auto normalForeground = safe_cast<Brush^>(Resources->Lookup("TextBrush"));
+	auto selectedForeground = ref new SolidColorBrush(Windows::UI::Colors::White);
+	for (size_t buttonIndex = 0; buttonIndex < navigationButtons.size(); ++buttonIndex)
+	{
+		const bool selected = buttonIndex == static_cast<size_t>(selectedIndex);
+		navigationButtons[buttonIndex]->Background = selected ? selectedBackground : transparent;
+		navigationButtons[buttonIndex]->BorderBrush = selected ? selectedBackground : transparent;
+		navigationButtons[buttonIndex]->Foreground = selected ? selectedForeground : normalForeground;
+	}
+	if (currentTabStatus && selectedIndex >= 0 &&
+		selectedIndex < static_cast<int>(sizeof(tabNames) / sizeof(tabNames[0])))
+		currentTabStatus->Text = WinRtString(tabNames[selectedIndex]);
 	// Every tool page owns the complete area below the command bar. Individual
 	// pages provide their own scrolling where their content exceeds that area.
 	// Recalculate card width after Pivot finishes changing pages.
-	if (toolTabs->SelectedIndex == 2)
+	if (toolTabs->SelectedIndex == 3)
 		UpdateGraphicPackGridColumns();
-}
-
-void DirectXPage::ToggleGettingStarted_Click(Platform::Object^, RoutedEventArgs^)
-{
-	SetGettingStartedExpanded(!m_gettingStartedExpanded);
 }
 
 void DirectXPage::LoadSettings()
@@ -1776,6 +2014,18 @@ void DirectXPage::LoadSettings()
 	skylandersCheck->IsChecked = settings.emulate_skylander_portal != 0;
 	infinityCheck->IsChecked = settings.emulate_infinity_base != 0;
 	dimensionsCheck->IsChecked = settings.emulate_dimensions_toypad != 0;
+	bool showMetrics = false;
+	auto values = ApplicationData::Current->LocalSettings->Values;
+	if (values->HasKey(WinRtString(PerformanceMetricsSettingName)))
+	{
+		auto property = dynamic_cast<IPropertyValue^>(
+			values->Lookup(WinRtString(PerformanceMetricsSettingName)));
+		if (property && property->Type == PropertyType::Boolean)
+			showMetrics = property->GetBoolean();
+	}
+	performanceMetricsCheck->IsChecked = showMetrics;
+	if (m_main->SetPerformanceMetrics(showMetrics))
+		m_performanceMetricsVisible = showMetrics;
 	m_loadingSettings = false;
 	settingsStatus->Text = "Settings are saved automatically when changed.";
 }
@@ -1860,18 +2110,6 @@ void DirectXPage::SaveSettings()
 	settingsStatus->Text = "Settings saved automatically. The player 1 Wii U controller is active; USB and startup options apply after restarting the app.";
 }
 
-void DirectXPage::SetGettingStartedExpanded(bool expanded)
-{
-	m_gettingStartedExpanded = expanded;
-	gettingStartedDetails->Visibility = expanded ? VisibleValue : CollapsedValue;
-	gettingStartedToggleText->Text = expanded ? "Hide guide" : "Show guide";
-	// Segoe MDL2 Assets: ChevronUp / ChevronDown.
-	gettingStartedToggleIcon->Glyph = WinRtString(expanded ? L"\xE70E" : L"\xE70D");
-	Windows::UI::Xaml::Automation::AutomationProperties::SetName(
-		gettingStartedToggleButton,
-		WinRtString(expanded ? L"Hide getting started guide" : L"Show getting started guide"));
-}
-
 void DirectXPage::ClearErrors_Click(Platform::Object^, RoutedEventArgs^)
 {
 	errorsList->Items->Clear();
@@ -1891,9 +2129,7 @@ void DirectXPage::FocusEmulatorInput()
 	// focusable Control, so focusing it releases ListView/AppBarButton focus
 	// while CoreWindow, SDL3-UWP and Windows.Gaming.Input continue receiving
 	// keyboard and controller input for Cemu.
-	toggleTabsButton->IsTabStop = false;
 	startButton->IsTabStop = false;
-	metricsButton->IsTabStop = false;
 	this->Focus(Windows::UI::Xaml::FocusState::Programmatic);
 }
 
@@ -1980,7 +2216,6 @@ void DirectXPage::SetTabsVisible(bool visible)
 	if (m_gameRunning && visible)
 		visible = false;
 	tabsPanel->Visibility = visible ? VisibleValue : CollapsedValue;
-	toggleTabsButtonText->Text = visible ? "Hide options" : "Show options";
 	if (!visible && m_gameRunning)
 		FocusEmulatorInput();
 }
@@ -1991,23 +2226,25 @@ void DirectXPage::SetGamePresentation(bool running)
 	{
 		// Give the running title the complete client area. This is a layout change
 		// inside the existing Xbox/UWP window, not a fullscreen-mode transition.
-		topCommandBar->Visibility = CollapsedValue;
+		navigationRail->Visibility = CollapsedValue;
+		commandFooter->Visibility = CollapsedValue;
+		Grid::SetColumn(stageGrid, 0);
+		Grid::SetColumnSpan(stageGrid, 2);
 		Grid::SetRow(emulatorViewport, 0);
 		Grid::SetRowSpan(emulatorViewport, 2);
 		tabsPanel->Visibility = CollapsedValue;
-		toggleTabsButtonText->Text = "Show options";
 		return;
 	}
 
-	topCommandBar->Visibility = VisibleValue;
-	Grid::SetRow(emulatorViewport, 1);
-	Grid::SetRowSpan(emulatorViewport, 1);
+	navigationRail->Visibility = VisibleValue;
+	commandFooter->Visibility = VisibleValue;
+	Grid::SetColumn(stageGrid, 1);
+	Grid::SetColumnSpan(stageGrid, 1);
+	Grid::SetRow(emulatorViewport, 0);
+	Grid::SetRowSpan(emulatorViewport, 2);
 	// Restore every focus target disabled while the title owned input.
-	toggleTabsButton->IsTabStop = true;
 	startButton->IsTabStop = true;
-	metricsButton->IsTabStop = true;
 	tabsPanel->Visibility = VisibleValue;
-	toggleTabsButtonText->Text = "Hide options";
 }
 
 void DirectXPage::SetExternalLoadingVisible(bool visible)
@@ -2046,7 +2283,6 @@ void DirectXPage::OnCemuStateChanged(CemuEmbedState state)
 		ref new DispatchedHandler([this, state]()
 		{
 			m_cemuReady = state == CEMU_EMBED_STATE_READY;
-			metricsButton->IsEnabled = m_cemuReady;
 			if (state == CEMU_EMBED_STATE_READY)
 			{
 				launchStatus->Text = "Loading library...";
@@ -2054,7 +2290,7 @@ void DirectXPage::OnCemuStateChanged(CemuEmbedState state)
 				m_gamepadRetryFrames = 59;
 				UpdateActiveAccount();
 				TryConfigureDefaultGamepad();
-				RefreshLibrary();
+				RestoreExternalStorageFolders();
 				RefreshDimensionsFigures();
 				LoadSettings();
 			}
@@ -2071,8 +2307,6 @@ void DirectXPage::OnCemuStateChanged(CemuEmbedState state)
 				m_gameRunning = false;
 				SetExternalLoadingVisible(false);
 				SetGamePresentation(false);
-				m_performanceMetricsVisible = false;
-				metricsButtonText->Text = "Show metrics";
 				SetSystemPointerForUi(true);
 				if (m_virtualMouseEnabled)
 					SetVirtualMouseEnabled(false);
@@ -2196,17 +2430,11 @@ void DirectXPage::UpdateGamepadStatus()
 		return;
 	}
 	std::wostringstream text;
-	text << L"Xbox Controller connected";
-	if (m_gamepadProfileReady)
-	{
-		text << L" \u2022 selected Wii U controller profile";
-		if (m_virtualMouseEnabled)
-			text << L" \u2022 virtual mouse active (A: click)";
-		else if (m_gameRunning)
-			text << L" \u2022 L+R: virtual mouse";
-	}
-	else
-		text << L" \u2022 preparing profile";
+	text << L"Controller connected";
+	if (!m_gamepadProfileReady)
+		text << L" \u2022 preparing";
+	else if (m_virtualMouseEnabled)
+		text << L" \u2022 mouse";
 	controllerStatus->Text = ref new Platform::String(text.str().c_str());
 	controllerStatus->Opacity = 1.0;
 	controllerStatusIcon->Opacity = 1.0;
@@ -2287,9 +2515,7 @@ void DirectXPage::UpdateActiveAccount()
 	}
 
 	std::ostringstream text;
-	text << "Account: " << (account.miiName.empty() ? "default" : account.miiName)
-		<< " (" << std::uppercase << std::hex << std::setw(8)
-		<< std::setfill('0') << account.persistentId << ")";
+	text << (account.miiName.empty() ? "Default account" : account.miiName);
 	if (account.onlineEnabled)
 		text << " \xE2\x80\xA2 online";
 	accountStatus->Text = FromUtf8(text.str());
@@ -2376,8 +2602,30 @@ void DirectXPage::OnBrokeredProgress(uint64_t bytesCopied, uint64_t totalBytes, 
 
 void DirectXPage::UpdateStartButton()
 {
-	startButton->IsEnabled = m_main != nullptr && m_cemuReady && !m_libraryBusy &&
-		FindInstalledTitleIndex(m_selectedTitleId) >= 0;
+	const int selectedIndex = FindInstalledTitleIndex(m_selectedTitleId);
+	const bool canStart = m_main != nullptr && m_cemuReady && !m_libraryBusy &&
+		selectedIndex >= 0;
+	startButton->IsEnabled = canStart;
+	startButton->Visibility = canStart ? VisibleValue : CollapsedValue;
+	selectedGameStatus->Text = selectedIndex >= 0
+		? FromUtf8(m_installedTitles[static_cast<size_t>(selectedIndex)].name)
+		: ref new Platform::String(L"Select a game");
+	UpdateSelectedShaderCount();
+}
+
+void DirectXPage::UpdateSelectedShaderCount()
+{
+	uint32_t shaderCount = 0;
+	const int selectedIndex = FindInstalledTitleIndex(m_selectedTitleId);
+	if (selectedIndex >= 0 && m_main && m_cemuReady)
+	{
+		const auto& title = m_installedTitles[static_cast<size_t>(selectedIndex)];
+		const uint64_t cacheTitleId = title.graphicPackTitleId != 0
+			? title.graphicPackTitleId : title.titleId;
+		m_main->GetShaderCount(cacheTitleId, &shaderCount);
+	}
+	shaderCacheStatus->Text = FromUtf8("Shader cache     " +
+		std::to_string(shaderCount) + (shaderCount == 1 ? " shader" : " shaders"));
 }
 
 int DirectXPage::FindInstalledTitleIndex(uint64_t titleId) const
@@ -2398,5 +2646,4 @@ void DirectXPage::SaveInternalState(Windows::Foundation::Collections::IPropertyS
 void DirectXPage::LoadInternalState(Windows::Foundation::Collections::IPropertySet^ state)
 {
 	(void)state;
-	SetGettingStartedExpanded(false);
 }

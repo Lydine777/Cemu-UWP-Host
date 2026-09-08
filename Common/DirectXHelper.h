@@ -44,13 +44,14 @@ namespace DX
 	// Verifique o suporte de Camadas SDK.
 	inline bool SdkLayersAvailable()
 	{
+		const D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
 		HRESULT hr = D3D11CreateDevice(
 			nullptr,
 			D3D_DRIVER_TYPE_NULL,       // Não é necessário criar um dispositivo de hardware real.
 			0,
 			D3D11_CREATE_DEVICE_DEBUG,  // Verifique as camadas do SDK.
-			nullptr,                    // Qualquer nível de recurso servirá.
-			0,
+			&featureLevel,              // Use the renderer's exact device contract.
+			1,
 			D3D11_SDK_VERSION,          // Defina sempre como D3D11_SDK_VERSION para aplicativos da Microsoft Store.
 			nullptr,                    // Não é necessário manter a referência do dispositivo D3D.
 			nullptr,                    // Não é necessário saber o nível do recurso.

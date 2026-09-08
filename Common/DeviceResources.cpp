@@ -69,7 +69,7 @@ namespace ScreenRotation
 // Construtor para DeviceResources.
 DX::DeviceResources::DeviceResources(bool externalRenderer) : 
 	m_screenViewport(),
-	m_d3dFeatureLevel(D3D_FEATURE_LEVEL_9_1),
+	m_d3dFeatureLevel(D3D_FEATURE_LEVEL_11_0),
 	m_d3dRenderTargetSize(),
 	m_outputSize(),
 	m_logicalSize(),
@@ -148,22 +148,9 @@ void DX::DeviceResources::CreateDeviceResources()
 	}
 #endif
 
-	// Esta matriz define o conjunto de níveis de recurso de hardware do DirectX ao qual este aplicativo dará suporte.
-	// Observe que a ordem deve ser preservada.
-	// Não se esqueça de declarar o nível mínimo de recurso necessário de seu aplicativo na
-	// descrição. Supõe-se que todos os aplicativos dão suporte a 9.1, salvo indicação em contrário.
-	D3D_FEATURE_LEVEL featureLevels[] = 
-	{
-		D3D_FEATURE_LEVEL_12_1,
-		D3D_FEATURE_LEVEL_12_0,
-		D3D_FEATURE_LEVEL_11_1,
-		D3D_FEATURE_LEVEL_11_0,
-		D3D_FEATURE_LEVEL_10_1,
-		D3D_FEATURE_LEVEL_10_0,
-		D3D_FEATURE_LEVEL_9_3,
-		D3D_FEATURE_LEVEL_9_2,
-		D3D_FEATURE_LEVEL_9_1
-	};
+	// The embedded renderer has one strict device contract on every supported
+	// machine: DirectX 11 Feature Level 11.0. Do not negotiate up or down.
+	const D3D_FEATURE_LEVEL featureLevels[] = { D3D_FEATURE_LEVEL_11_0 };
 
 	// Crie o objeto do dispositivo de API do Direct3D 11 e um contexto correspondente.
 	ComPtr<ID3D11Device> device;

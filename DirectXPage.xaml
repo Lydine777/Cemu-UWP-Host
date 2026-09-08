@@ -7,22 +7,25 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     IsTabStop="True"
-    Background="#FF051A13">
+    Background="#FFFBFCF9">
 
   <Page.Resources>
-    <SolidColorBrush x:Key="PageBackgroundBrush" Color="#FF051A13" />
-    <SolidColorBrush x:Key="TopBarBrush" Color="#FF0A2A20" />
-    <SolidColorBrush x:Key="PanelBrush" Color="#F20A241B" />
-    <SolidColorBrush x:Key="CardBrush" Color="#FF10382B" />
-    <SolidColorBrush x:Key="AccentBlueBrush" Color="#FF1689E8" />
-    <SolidColorBrush x:Key="AccentBlueHoverBrush" Color="#FF42A5F5" />
-    <SolidColorBrush x:Key="MutedTextBrush" Color="#FFBED8CE" />
-    <SolidColorBrush x:Key="DividerBrush" Color="#FF2C6251" />
+    <!-- Arcade Botanico: porcelain surfaces, Circuit Green focus and sage secondary planes. -->
+    <SolidColorBrush x:Key="PageBackgroundBrush" Color="#FFFBFCF9" />
+    <SolidColorBrush x:Key="TopBarBrush" Color="#FFFFFEFC" />
+    <SolidColorBrush x:Key="PanelBrush" Color="#FDFBFCF9" />
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="TextBrush" Color="#FF16352B" />
+    <SolidColorBrush x:Key="AccentBlueBrush" Color="#FF0C8B57" />
+    <SolidColorBrush x:Key="AccentBlueHoverBrush" Color="#FF087247" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#FF657D72" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#FFD2E5D8" />
+    <SolidColorBrush x:Key="SageBrush" Color="#FFD7F2E4" />
 
     <Style x:Key="SectionHeadingStyle" TargetType="TextBlock">
       <Setter Property="FontSize" Value="20" />
       <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     </Style>
 
     <Style x:Key="HelpfulTextStyle" TargetType="TextBlock">
@@ -33,9 +36,11 @@
 
     <Style x:Key="LibraryItemStyle" TargetType="ListViewItem">
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-      <Setter Property="Padding" Value="12,8" />
-      <Setter Property="Margin" Value="0,3" />
-      <Setter Property="MinHeight" Value="54" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+      <Setter Property="Width" Value="218" />
+      <Setter Property="Height" Value="218" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="7" />
     </Style>
 
     <Style TargetType="PivotItem">
@@ -51,184 +56,114 @@
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
     </Style>
+
+    <Style TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="Background" Value="{StaticResource CardBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style TargetType="AppBarButton">
+      <Setter Property="Foreground" Value="{StaticResource AccentBlueBrush}" />
+    </Style>
+
+    <Style TargetType="Pivot">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+
+    <DataTemplate x:Key="HiddenPivotHeaderTemplate">
+      <Grid Width="0" Height="0" />
+    </DataTemplate>
+
+    <Style x:Key="SidebarButtonStyle" TargetType="Button">
+      <Setter Property="Height" Value="50" />
+      <Setter Property="Width" Value="182" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="Margin" Value="0,3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="11" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
   </Page.Resources>
 
   <Grid Background="{StaticResource PageBackgroundBrush}">
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" />
-    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="218" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
 
-    <Border x:Name="topCommandBar"
-            Grid.Row="0"
-            MinHeight="64"
-            Background="{StaticResource TopBarBrush}">
-      <!-- Keep the Xbox bar on one row while exposing controller and account
-           state directly instead of hiding those details behind tooltips. -->
-      <Grid Margin="24,0">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="250" />
-          <ColumnDefinition Width="250" />
-        </Grid.ColumnDefinitions>
-
-        <StackPanel Grid.Column="0"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center">
-          <Button x:Name="toggleTabsButton"
-                  Height="44"
-                  Padding="12,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Foreground="White"
-                  Click="ToggleTabs_Click">
-            <StackPanel Orientation="Horizontal">
-              <FontIcon Glyph="&#xE8FD;"
-                        FontSize="17"
-                        VerticalAlignment="Center"
-                        Margin="0,0,8,0" />
-              <TextBlock x:Name="toggleTabsButtonText"
-                         Text="Hide options"
-                         VerticalAlignment="Center" />
-            </StackPanel>
+    <Border x:Name="navigationRail"
+            Grid.Column="0"
+            Background="#D6FFFFFC"
+            BorderBrush="{StaticResource DividerBrush}"
+            BorderThickness="0,0,1,0">
+      <Grid Padding="18,26,18,18">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Margin="4,0,0,32">
+          <Border Width="44" Height="44" CornerRadius="13" Background="{StaticResource SageBrush}">
+            <Image Source="Assets/Square44x44Logo.png" Width="36" Height="36"
+                   Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel Margin="11,3,0,0">
+            <TextBlock Text="CEMU UWP" FontFamily="Consolas" FontSize="10"
+                       Foreground="{StaticResource MutedTextBrush}" />
+            <TextBlock Text="Botanical Arcade" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextBrush}" />
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Row="1">
+          <Button x:Name="homeNavigationButton" Style="{StaticResource SidebarButtonStyle}" Tag="0" Click="NavigationButton_Click" Background="{StaticResource AccentBlueBrush}" Foreground="White">
+            <StackPanel Orientation="Horizontal"><FontIcon Glyph="&#xE80F;" Width="28"/><TextBlock Text="Home" Margin="10,0,0,0"/></StackPanel>
           </Button>
-          <Button x:Name="startButton"
-                  Height="44"
-                  Padding="14,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Foreground="White"
-                  Click="StartGame_Click"
-                  IsEnabled="False">
-            <TextBlock Text="Start game"
-                       VerticalAlignment="Center" />
+          <Button x:Name="libraryNavigationButton" Style="{StaticResource SidebarButtonStyle}" Tag="1" Click="NavigationButton_Click">
+            <StackPanel Orientation="Horizontal"><FontIcon Glyph="&#xE8B7;" Width="28"/><TextBlock Text="Library" Margin="10,0,0,0"/></StackPanel>
           </Button>
-          <Button x:Name="metricsButton"
-                  Height="44"
-                  Padding="12,0"
-                  Background="Transparent"
-                  BorderThickness="0"
-                  Foreground="White"
-                  Click="ToggleMetrics_Click"
-                  IsEnabled="False">
-            <StackPanel Orientation="Horizontal">
-              <FontIcon Glyph="&#xE9D2;"
-                        FontSize="17"
-                        VerticalAlignment="Center"
-                        Margin="0,0,8,0" />
-              <TextBlock x:Name="metricsButtonText"
-                         Text="Show metrics"
-                         VerticalAlignment="Center" />
-            </StackPanel>
+          <Button x:Name="toyPadNavigationButton" Style="{StaticResource SidebarButtonStyle}" Tag="2" Click="NavigationButton_Click">
+            <StackPanel Orientation="Horizontal"><FontIcon Glyph="&#xE7FC;" Width="28"/><TextBlock Text="Toy Pad" Margin="10,0,0,0"/></StackPanel>
+          </Button>
+          <Button x:Name="graphicPacksNavigationButton" Style="{StaticResource SidebarButtonStyle}" Tag="3" Click="NavigationButton_Click">
+            <StackPanel Orientation="Horizontal"><FontIcon Glyph="&#xE9D2;" Width="28"/><TextBlock Text="Graphic packs" Margin="10,0,0,0"/></StackPanel>
+          </Button>
+          <Button x:Name="settingsNavigationButton" Style="{StaticResource SidebarButtonStyle}" Tag="4" Click="NavigationButton_Click">
+            <StackPanel Orientation="Horizontal"><FontIcon Glyph="&#xE713;" Width="28"/><TextBlock Text="Settings" Margin="10,0,0,0"/></StackPanel>
+          </Button>
+          <Button x:Name="helpNavigationButton" Style="{StaticResource SidebarButtonStyle}" Tag="5" Click="NavigationButton_Click">
+            <StackPanel Orientation="Horizontal"><FontIcon Glyph="&#xE897;" Width="28"/><TextBlock Text="Help and errors" Margin="10,0,0,0"/></StackPanel>
           </Button>
         </StackPanel>
-
-        <Border Grid.Column="1"
-                  Width="1"
-                  Height="32"
-                  Background="{StaticResource DividerBrush}"
-                  Margin="18,0" />
-
-        <Grid Grid.Column="2"
-              VerticalAlignment="Center">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <Border Grid.Column="0"
-                  Width="5"
-                  Height="34"
-                  Background="{StaticResource AccentBlueBrush}"
-                  CornerRadius="3"
-                  Margin="0,0,12,0" />
-          <StackPanel Grid.Column="1"
-                      VerticalAlignment="Center">
-            <TextBlock Text="Status"
-                       FontSize="11"
+        <Border Grid.Row="2" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="5,15,5,0">
+          <StackPanel>
+            <TextBlock Text="● SYSTEM CONNECTED" FontFamily="Consolas" FontSize="10"
+                       Foreground="{StaticResource AccentBlueBrush}" />
+            <TextBlock Text="DirectX 11 · FL 11.0" Margin="0,6,0,0" FontSize="12"
                        Foreground="{StaticResource MutedTextBrush}" />
-            <TextBlock x:Name="launchStatus"
-                       Text="Initializing emulator..."
-                       FontSize="15"
-                       FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="White" />
           </StackPanel>
-        </Grid>
-
-        <Border Grid.Column="3"
-                Width="1"
-                Height="32"
-                Background="{StaticResource DividerBrush}"
-                Margin="18,0" />
-
-        <Grid Grid.Column="4"
-              VerticalAlignment="Center"
-              HorizontalAlignment="Stretch"
-              Margin="8,0,12,0"
-              ToolTipService.ToolTip="{Binding Text, ElementName=controllerStatus}">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <FontIcon x:Name="controllerStatusIcon"
-                    Glyph="&#xE7FC;"
-                    FontSize="19"
-                    Foreground="{StaticResource AccentBlueBrush}"
-                    VerticalAlignment="Center"
-                    Margin="0,0,10,0" />
-          <StackPanel Grid.Column="1" VerticalAlignment="Center">
-            <TextBlock Text="Controller status"
-                       FontSize="11"
-                       Foreground="{StaticResource MutedTextBrush}" />
-            <TextBlock x:Name="controllerStatus"
-                       Text="Controller disconnected"
-                       FontSize="14"
-                       FontWeight="SemiBold"
-                       Foreground="White"
-                       TextTrimming="CharacterEllipsis" />
-          </StackPanel>
-        </Grid>
-
-        <Grid Grid.Column="5"
-              VerticalAlignment="Center"
-              HorizontalAlignment="Stretch"
-              Margin="8,0,0,0"
-              ToolTipService.ToolTip="{Binding Text, ElementName=accountStatus}">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <FontIcon x:Name="accountStatusIcon"
-                    Glyph="&#xE77B;"
-                    FontSize="19"
-                    Foreground="{StaticResource AccentBlueBrush}"
-                    VerticalAlignment="Center"
-                    Margin="0,0,10,0" />
-          <StackPanel Grid.Column="1" VerticalAlignment="Center">
-            <TextBlock Text="Account status"
-                       FontSize="11"
-                       Foreground="{StaticResource MutedTextBrush}" />
-            <TextBlock x:Name="accountStatus"
-                       Text="Loading account..."
-                       FontSize="14"
-                       FontWeight="SemiBold"
-                       Foreground="White"
-                       TextTrimming="CharacterEllipsis" />
-          </StackPanel>
-        </Grid>
+        </Border>
       </Grid>
     </Border>
 
-    <!-- The emulator always fills the space below the command bar. Before a
+    <Grid x:Name="stageGrid" Grid.Column="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+    <!-- The emulator always fills the available stage. Before a
          game starts, the tools cover this entire area; while a game runs they
          collapse without resizing the SwapChainPanel. -->
     <Grid x:Name="emulatorViewport"
-          Grid.Row="1"
-          Background="#FF020B08"
+          Grid.Row="0"
+          Grid.RowSpan="2"
+          Background="#FFEAF5ED"
           PointerPressed="EmulatorViewport_PointerPressed"
           SizeChanged="EmulatorViewport_SizeChanged">
       <SwapChainPanel x:Name="emulatorSurface"
@@ -242,7 +177,7 @@
         <TextBlock x:Name="emulatorPlaceholder"
                    Text="The game will appear here"
                    FontSize="16"
-                   Foreground="#8ABED8CE" />
+                   Foreground="{StaticResource MutedTextBrush}" />
       </StackPanel>
 
       <!-- Shown only while a brokered external title is being staged. Keeping
@@ -250,14 +185,14 @@
            from looking like a frozen or failed launch. -->
       <Grid x:Name="externalLoadingOverlay"
             Canvas.ZIndex="25"
-            Background="#E60A241B"
+            Background="#F2FBFCF9"
             Visibility="Collapsed"
             IsHitTestVisible="True">
         <Border Width="430"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Background="#F212382C"
-                BorderBrush="#FF3B7A66"
+                Background="{StaticResource CardBrush}"
+                BorderBrush="{StaticResource AccentBlueBrush}"
                 BorderThickness="1"
                 CornerRadius="10"
                 Padding="32,28">
@@ -273,7 +208,7 @@
                             Foreground="{StaticResource AccentBlueBrush}" />
               <FontIcon Glyph="&#xE768;"
                         FontSize="25"
-                        Foreground="White"
+                        Foreground="{StaticResource AccentBlueBrush}"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center" />
             </Grid>
@@ -281,7 +216,7 @@
                        Text="Loading external game"
                        FontSize="22"
                        FontWeight="SemiBold"
-                       Foreground="White"
+                       Foreground="{StaticResource TextBrush}"
                        TextAlignment="Center" />
             <TextBlock x:Name="externalLoadingDetail"
                        Text="Preparing external storage..."
@@ -296,12 +231,12 @@
                          Value="0"
                          Height="10"
                          Foreground="{StaticResource AccentBlueBrush}"
-                         Background="#FF082018" />
+                         Background="{StaticResource SageBrush}" />
             <TextBlock x:Name="externalLoadingPercent"
                        Text="0%"
                        FontSize="28"
                        FontWeight="SemiBold"
-                       Foreground="White"
+                       Foreground="{StaticResource TextBrush}"
                        TextAlignment="Center"
                        Margin="0,12,0,0" />
           </StackPanel>
@@ -339,199 +274,99 @@
         <Pivot x:Name="toolTabs"
                HorizontalAlignment="Stretch"
                VerticalAlignment="Stretch"
-               Background="Transparent"
-               Foreground="White"
-               SelectionChanged="ToolTabs_SelectionChanged">
-          <PivotItem Header="My games">
-            <Grid Padding="24,6,24,22">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-              </Grid.RowDefinitions>
-
-              <Border Grid.Row="0"
-                      Background="{StaticResource CardBrush}"
-                      BorderBrush="{StaticResource DividerBrush}"
-                      BorderThickness="1"
-                      CornerRadius="6"
-                      Padding="16,12"
-                      Margin="0,0,0,10">
-                <Grid>
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                  </Grid.RowDefinitions>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <Border Width="36"
-                          Height="36"
-                          Background="#332A9DF4"
-                          CornerRadius="18"
-                          VerticalAlignment="Top"
-                          Margin="0,0,12,0">
-                    <FontIcon Glyph="&#xE946;"
-                              FontSize="18"
-                              Foreground="{StaticResource AccentBlueBrush}"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center" />
+                Background="Transparent"
+                Foreground="{StaticResource TextBrush}"
+                HeaderTemplate="{StaticResource HiddenPivotHeaderTemplate}"
+                SelectionChanged="ToolTabs_SelectionChanged">
+          <PivotItem Header="Home">
+            <ScrollViewer VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel Padding="24,14,24,22" Spacing="18">
+                <Grid Height="250">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="1.3*"/></Grid.ColumnDefinitions>
+                  <StackPanel VerticalAlignment="Center" Margin="4,0,28,0">
+                    <TextBlock Text="✦  EMULATION" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AccentBlueBrush}" />
+                    <TextBlock Text="Emulator&#x0a;ready." FontSize="42" FontWeight="SemiBold" LineHeight="40" Margin="0,15,0,14" Foreground="{StaticResource TextBrush}" />
+                    <TextBlock Text="Manage content and access your games through a clear, controller-friendly interface." Style="{StaticResource HelpfulTextStyle}" MaxWidth="310" HorizontalAlignment="Left" />
+                  </StackPanel>
+                  <Border Grid.Column="1" CornerRadius="30,14,30,14" Padding="24">
+                    <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#FF0A6746" Offset="0"/><GradientStop Color="#FF0C8B57" Offset="0.48"/><GradientStop Color="#FFA5DEC0" Offset="0.49"/><GradientStop Color="#FFEAF7EF" Offset="1"/></LinearGradientBrush></Border.Background>
+                    <Grid>
+                      <Border HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="15" BorderBrush="#77FFFFFF" BorderThickness="1" Background="#22FFFFFF" Padding="10,6"><TextBlock Text="●  SESSION AVAILABLE" FontFamily="Consolas" FontSize="10" Foreground="White"/></Border>
+                      <StackPanel VerticalAlignment="Bottom">
+                        <TextBlock Text="LIBRARY · CEMU UWP" FontFamily="Consolas" FontSize="10" Foreground="#FFD6FFE2"/>
+                        <TextBlock Text="Select a title&#x0a;to get started." FontSize="34" FontWeight="SemiBold" LineHeight="32" Foreground="White" Margin="0,8,0,13"/>
+                        <StackPanel Orientation="Horizontal">
+                          <Button Tag="1" Click="NavigationButton_Click" Background="White" Foreground="#FF086443" BorderThickness="0" CornerRadius="13" Padding="15,9"><TextBlock Text="▶  Open library" FontWeight="SemiBold"/></Button>
+                          <TextBlock Text="DirectX 11 · FL 11.0" FontFamily="Consolas" FontSize="10" Foreground="White" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                        </StackPanel>
+                      </StackPanel>
+                    </Grid>
                   </Border>
-                  <StackPanel Grid.Column="1"
-                              VerticalAlignment="Center">
-                    <TextBlock Text="Getting started"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Foreground="White" />
-                    <TextBlock Text="A quick guide for installing and starting games"
-                               Style="{StaticResource HelpfulTextStyle}"
-                               FontSize="13"
-                               Margin="0,2,8,0" />
-                  </StackPanel>
-                  <Button x:Name="gettingStartedToggleButton"
-                          Grid.Column="2"
-                          MinWidth="116"
-                          Padding="10,6"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Center"
-                          Background="Transparent"
-                          Foreground="White"
-                          BorderBrush="{StaticResource DividerBrush}"
-                          BorderThickness="1"
-                          Click="ToggleGettingStarted_Click"
-                          ToolTipService.ToolTip="Collapse or expand the getting started guide">
-                    <StackPanel Orientation="Horizontal">
-                      <TextBlock x:Name="gettingStartedToggleText"
-                                 Text="Show guide"
-                                 VerticalAlignment="Center" />
-                      <FontIcon x:Name="gettingStartedToggleIcon"
-                                Glyph="&#xE70D;"
-                                FontSize="12"
-                                Margin="8,0,0,0"
-                                VerticalAlignment="Center" />
+                </Grid>
+
+                <TextBlock Text="Management" Style="{StaticResource SectionHeadingStyle}"/>
+                <Grid ColumnSpacing="12">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="8"><TextBlock Text="Content" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Install games, updates, and keys." Style="{StaticResource HelpfulTextStyle}"/>
+                      <Button x:Name="installContentButton" Content="＋  Install content" HorizontalAlignment="Stretch" IsEnabled="False" Click="InstallContent_Click"/>
+                      <Button x:Name="importKeysButton" Content="▤  Import keys.txt" HorizontalAlignment="Stretch" IsEnabled="False" Click="ImportKeys_Click"/>
+                      <Button x:Name="refreshLibraryButton" Content="↻  Scan local folder" HorizontalAlignment="Stretch" IsEnabled="False" Click="RefreshLibrary_Click"/>
                     </StackPanel>
-                  </Button>
-                  <StackPanel x:Name="gettingStartedDetails"
-                              Grid.Row="1"
-                              Grid.Column="1"
-                              Grid.ColumnSpan="2"
-                              Margin="0,8,0,0"
-                              Visibility="Collapsed">
-                    <TextBlock Text="1. Install content  •  2. Choose a game and press A  •  3. Select Start game"
-                               Style="{StaticResource HelpfulTextStyle}"
-                               Margin="0,0,0,0" />
-                    <TextBlock Text="Extracted folders must contain code, content, and meta. Updates and DLC are linked automatically."
-                               Style="{StaticResource HelpfulTextStyle}"
-                               FontSize="13"
-                               Margin="0,2,0,0" />
-                    <TextBlock Text="Open game file: WUD, WUX, ISO, WUA, WUHB, RPX, or ELF. Use Open game folder for extracted titles, NUS title.tmd content, or executables with adjacent RPL files."
-                               Style="{StaticResource HelpfulTextStyle}"
-                               FontSize="13"
-                               Margin="0,2,0,0" />
-                    <TextBlock Text="No external drive? GamesToInstall detects WUD, WUX, ISO, WUA, WUHB, RPX, ELF, extracted titles, updates, DLC, and Graphic Packs."
-                               Style="{StaticResource HelpfulTextStyle}"
-                               FontSize="13"
-                               Margin="0,2,0,0" />
-                    <StackPanel Orientation="Horizontal"
-                                Margin="0,5,0,0">
-                      <FontIcon Glyph="&#xE8C9;"
-                                FontSize="14"
-                                Foreground="{StaticResource AccentBlueBrush}"
-                                VerticalAlignment="Top"
-                                Margin="0,1,7,0" />
-                      <TextBlock Text="Some encrypted WUD, WUX, ISO, and WUA games require a valid keys.txt before they can be recognized. Select Import keys.txt first."
-                                 Style="{StaticResource HelpfulTextStyle}"
-                                 Foreground="{StaticResource AccentBlueHoverBrush}"
-                                 FontSize="13" />
+                  </Border>
+                  <Border Grid.Column="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="8"><TextBlock Text="External storage" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Manage folders without copying games." Style="{StaticResource HelpfulTextStyle}"/>
+                      <Button x:Name="scanExternalStorageButton" Content="＋  Add external folder" HorizontalAlignment="Stretch" IsEnabled="False" Click="ScanExternalStorage_Click"/>
+                      <Button x:Name="rescanExternalStorageButton" Content="↻  Rescan external folders" HorizontalAlignment="Stretch" IsEnabled="False" Click="RescanExternalStorage_Click"/>
+                      <Button x:Name="forgetExternalStorageButton" Content="×  Forget external folders" HorizontalAlignment="Stretch" IsEnabled="False" Click="ForgetExternalStorage_Click"/>
                     </StackPanel>
+                  </Border>
+                  <Border Grid.Column="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="8"><TextBlock Text="Resources and maintenance" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Update packs and manage the cache." Style="{StaticResource HelpfulTextStyle}"/>
+                      <Button x:Name="downloadGraphicPacksButton" Content="↓  Download graphic packs" HorizontalAlignment="Stretch" IsEnabled="False" Click="DownloadGraphicPacks_Click"/>
+                      <Button x:Name="installGraphicPacksButton" Content="＋  Install graphic packs" HorizontalAlignment="Stretch" IsEnabled="False" Click="InstallGraphicPacks_Click"/>
+                      <Button x:Name="clearShaderCacheButton" Content="⌫  Clear shader cache" HorizontalAlignment="Stretch" IsEnabled="False" Click="ClearShaderCache_Click"/>
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </StackPanel>
+            </ScrollViewer>
+          </PivotItem>
+
+          <PivotItem Header="Library">
+            <Grid Padding="24,14,24,22">
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+              <Border CornerRadius="16" Background="#FF10382B" Padding="16" Margin="0,0,0,14">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <StackPanel VerticalAlignment="Center"><TextBlock Text="SYSTEM" FontFamily="Consolas" FontSize="10" Foreground="#FFA5DEC0"/><TextBlock x:Name="selectedGameStatus" Text="Select a game" FontSize="20" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis"/></StackPanel>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="20,0">
+                    <TextBlock x:Name="shaderCacheStatus" Text="Shader cache     0 shaders" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA"/>
+                    <TextBlock Text="Controller       GamePad" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA" Margin="0,4,0,0"/>
+                    <TextBlock Text="Renderer         D3D11" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA" Margin="0,4,0,0"/>
                   </StackPanel>
+                  <Button x:Name="startButton" Grid.Column="2" Content="Start game" Click="StartGame_Click" IsEnabled="False" Visibility="Collapsed" Padding="22,10" VerticalAlignment="Center" Background="White" Foreground="#FF086443" BorderThickness="0" CornerRadius="10"/>
                 </Grid>
               </Border>
-
-              <Grid Grid.Row="1" Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                  <TextBlock Text="Installed games"
-                             Style="{StaticResource SectionHeadingStyle}" />
-                  <TextBlock Text="The confirmed game remains selected while you navigate the screen."
-                             Style="{StaticResource HelpfulTextStyle}"
-                             Margin="0,2,12,0" />
-                </StackPanel>
-
-                <CommandBar Grid.Column="1"
-                            Background="Transparent"
-                            Foreground="White"
-                            DefaultLabelPosition="Bottom"
-                            IsDynamicOverflowEnabled="True">
-                  <AppBarButton x:Name="installContentButton"
-                                Label="Install content"
-                                Icon="Add"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="InstallContent_Click" />
-                  <AppBarButton x:Name="importKeysButton"
-                                Label="Import keys.txt"
-                                Icon="Document"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="ImportKeys_Click" />
-                  <AppBarButton x:Name="refreshLibraryButton"
-                                Label="Scan local folder"
-                                Icon="Refresh"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="RefreshLibrary_Click" />
-                  <AppBarButton x:Name="scanExternalStorageButton"
-                                Label="Choose external storage"
-                                Icon="Refresh"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="ScanExternalStorage_Click" />
-                  <AppBarButton x:Name="downloadGraphicPacksButton"
-                                Label="Download graphic packs"
-                                Icon="Download"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="DownloadGraphicPacks_Click" />
-                  <AppBarButton x:Name="installGraphicPacksButton"
-                                Label="Install graphic packs"
-                                Icon="OpenFile"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="InstallGraphicPacks_Click" />
-                  <AppBarButton x:Name="clearShaderCacheButton"
-                                Label="Clear shader cache"
-                                Icon="Clear"
-                                Foreground="White"
-                                IsEnabled="False"
-                                Click="ClearShaderCache_Click" />
-                </CommandBar>
-              </Grid>
-
-              <Border Grid.Row="2"
-                      Background="#CC071E17"
-                      BorderBrush="{StaticResource DividerBrush}"
-                      BorderThickness="1"
-                      CornerRadius="5"
-                      Padding="5">
+              <Border Grid.Row="1" Background="#FFF7FBF8" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="8" Padding="5">
                 <ListView x:Name="installedGamesList"
                           Background="Transparent"
-                          Foreground="White"
+                          Foreground="{StaticResource TextBrush}"
                           ItemContainerStyle="{StaticResource LibraryItemStyle}"
                           SelectionChanged="InstalledGames_SelectionChanged"
                           ItemClick="InstalledGames_ItemClick"
                           IsItemClickEnabled="True"
-                          SelectionMode="Single"
-                          SingleSelectionFollowsFocus="False">
+                           SelectionMode="Single"
+                           SingleSelectionFollowsFocus="False">
+                  <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <ItemsWrapGrid Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ListView.ItemsPanel>
                   <ListView.Resources>
-                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#FF0D6ECA" />
-                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#FF1689E8" />
-                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#55366B58" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#FF0C8B57" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#FF087247" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#55D7F2E4" />
                     <SolidColorBrush x:Key="ListViewItemForegroundSelected" Color="White" />
                   </ListView.Resources>
                 </ListView>
@@ -669,11 +504,11 @@
                         HorizontalAlignment="Stretch" Margin="0,10,0,10"
                         IsEnabled="False"
                         SelectionChanged="GraphicPackGame_SelectionChanged" />
-              <Border Grid.Row="2" Background="#CC071E17"
+              <Border Grid.Row="2" Background="#FFF7FBF8"
                       BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
                       CornerRadius="5" Padding="5">
                 <GridView x:Name="graphicPacksList" Background="Transparent"
-                          Foreground="White" SelectionMode="None"
+                          Foreground="{StaticResource TextBrush}" SelectionMode="None"
                           IsItemClickEnabled="False"
                           ItemContainerStyle="{StaticResource GraphicPackItemStyle}"
                           ScrollViewer.HorizontalScrollMode="Disabled"
@@ -701,7 +536,7 @@
                           </Grid.RowDefinitions>
                           <TextBlock Text="{x:Bind Name, Mode=OneWay}"
                                      FontSize="15" FontWeight="SemiBold"
-                                     Foreground="White" TextWrapping="Wrap"
+                                     Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"
                                      MaxLines="2" />
                           <TextBlock Grid.Row="1" Text="{x:Bind Category, Mode=OneWay}"
                                      FontSize="12" Margin="0,3,0,0"
@@ -713,7 +548,7 @@
                                      Foreground="{StaticResource MutedTextBrush}"
                                      TextWrapping="Wrap" MaxLines="3"
                                      TextTrimming="CharacterEllipsis" />
-                          <ToggleSwitch Grid.Row="3" Header="Enabled"
+                          <ToggleSwitch Grid.Row="3" Header="Enabled" OnContent="Enabled" OffContent="Disabled"
                                         HorizontalAlignment="Left"
                                         IsOn="{x:Bind Enabled, Mode=TwoWay}"
                                         Tag="{x:Bind Identity, Mode=OneWay}"
@@ -780,6 +615,7 @@
                         <CheckBox x:Name="asyncCompileCheck" Content="Async shader compile" Checked="SettingsCheckChanged" Unchecked="SettingsCheckChanged"/>
                         <CheckBox x:Name="gx2SyncCheck" Content="GX2DrawDone synchronization" Checked="SettingsCheckChanged" Unchecked="SettingsCheckChanged"/>
                         <CheckBox x:Name="upsideDownCheck" Content="Render upside down" Checked="SettingsCheckChanged" Unchecked="SettingsCheckChanged"/>
+                        <CheckBox x:Name="performanceMetricsCheck" Content="Show performance metrics" Checked="PerformanceMetricsCheckChanged" Unchecked="PerformanceMetricsCheckChanged"/>
                       </StackPanel>
                       <StackPanel Grid.Column="2">
                         <TextBlock Text="Scaling and gamma" Style="{StaticResource SectionHeadingStyle}" />
@@ -855,13 +691,13 @@
                 <AppBarButton Grid.Column="1"
                               Label="Clear messages"
                               Icon="Delete"
-                              Foreground="White"
+                              Foreground="{StaticResource AccentBlueBrush}"
                               Click="ClearErrors_Click"
                               HorizontalAlignment="Right" />
               </Grid>
 
               <Border Grid.Row="1"
-                      Background="#CC071E17"
+                      Background="#FFF7FBF8"
                       BorderBrush="{StaticResource DividerBrush}"
                       BorderThickness="1"
                       CornerRadius="5"
@@ -883,7 +719,7 @@
                                    Text="{Binding}"
                                    TextWrapping="Wrap"
                                    FontFamily="Consolas"
-                                   Foreground="#FFFFC7C7" />
+                                   Foreground="#FF7A1F1F" />
                       </Grid>
                     </DataTemplate>
                   </ListView.ItemTemplate>
@@ -893,6 +729,48 @@
           </PivotItem>
         </Pivot>
       </Grid>
+    </Grid>
+      <Border x:Name="commandFooter" Grid.Row="1" Canvas.ZIndex="20"
+              VerticalAlignment="Bottom" Background="#EDFFFFFC"
+              BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
+              Padding="22,10" IsHitTestVisible="False">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="A" FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource AccentBlueBrush}" />
+            <TextBlock Text="  Confirm     B  Back     ↕  Navigate     MENU  Options" Foreground="{StaticResource MutedTextBrush}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,14,0">
+            <Border Width="4" Height="18" CornerRadius="2" Background="{StaticResource AccentBlueBrush}" Margin="0,0,8,0"/>
+            <TextBlock x:Name="launchStatus" Text="Initializing emulator..." FontWeight="SemiBold"
+                       Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0"
+                      ToolTipService.ToolTip="{Binding Text, ElementName=controllerStatus}">
+            <FontIcon x:Name="controllerStatusIcon" Glyph="&#xE7FC;" FontSize="15"
+                      Foreground="{StaticResource AccentBlueBrush}" Margin="0,0,6,0"/>
+            <TextBlock x:Name="controllerStatus" Text="Disconnected" MaxWidth="125"
+                       Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0"
+                      ToolTipService.ToolTip="{Binding Text, ElementName=accountStatus}">
+            <FontIcon x:Name="accountStatusIcon" Glyph="&#xE77B;" FontSize="15"
+                      Foreground="{StaticResource AccentBlueBrush}" Margin="0,0,6,0"/>
+            <TextBlock x:Name="accountStatus" Text="Account unavailable" MaxWidth="145"
+                       Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+          <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <Border Width="25" Height="3" CornerRadius="2" Background="{StaticResource AccentBlueBrush}" Margin="0,0,9,0" />
+            <TextBlock x:Name="currentTabStatus" Text="Home" Foreground="{StaticResource AccentBlueBrush}" />
+          </StackPanel>
+        </Grid>
+      </Border>
     </Grid>
   </Grid>
 </Page>

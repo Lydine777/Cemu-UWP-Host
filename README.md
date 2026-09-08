@@ -27,7 +27,10 @@ Implemented and currently available:
 - Xbox Series S memory guard and a 512 MB disk-backed D3D11 shader-cache budget.
 - Full-client game presentation with the command bar and option tabs hidden while a title runs.
 - Direct execution from external storage through brokered streams without copying the selected game into internal storage.
+- Persistent external-library authorization through the UWP `FutureAccessList`, with automatic restoration, combined rescanning, and an explicit command to forget only the folders registered by this host.
 - Settings saved immediately when changed; no separate Apply button is required.
+- Arcade Botânico frontend with porcelain surfaces, Circuit Green focus, sage secondary planes, recolored package assets, and full-height tool pages adapted to retain the current Graphic Packs and Xbox-specific controls.
+- Square, wrapping game cards with compact metadata and the title-provided `meta/iconTex.tga` artwork used by Cemu's desktop game list; the Start game action appears in the ready-to-play system panel only after a game is selected.
 
 ## Xbox Series S memory policy
 

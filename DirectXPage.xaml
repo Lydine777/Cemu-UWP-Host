@@ -343,7 +343,7 @@
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="20,0">
                     <TextBlock x:Name="shaderCacheStatus" Text="Shader cache     0 shaders" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA"/>
                     <TextBlock Text="Controller       GamePad" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA" Margin="0,4,0,0"/>
-                    <TextBlock Text="Renderer         D3D11" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA" Margin="0,4,0,0"/>
+                    <TextBlock x:Name="rendererMetricsText" Text="Renderer         D3D11" FontFamily="Consolas" FontSize="10" Foreground="#FFB9D8CA" Margin="0,4,0,0"/>
                   </StackPanel>
                   <Button x:Name="startButton" Grid.Column="2" Content="Start game" Click="StartGame_Click" IsEnabled="False" Visibility="Collapsed" Padding="22,10" VerticalAlignment="Center" Background="White" Foreground="#FF086443" BorderThickness="0" CornerRadius="10"/>
                 </Grid>
@@ -574,7 +574,7 @@
               <Grid>
                 <StackPanel>
                   <TextBlock Text="Cemu settings" Style="{StaticResource SectionHeadingStyle}" />
-                  <TextBlock Text="Direct3D 11 and the Xbox GPU are fixed by this host. Changes marked for restart apply to the next game launch."
+                  <TextBlock Text="Direct3D 11 is the stable backend; Direct3D 12 is experimental. Graphics API changes apply after restarting the app."
                              Style="{StaticResource HelpfulTextStyle}" Margin="0,2,16,8" />
                 </StackPanel>
               </Grid>
@@ -610,7 +610,11 @@
                       </StackPanel>
                       <StackPanel Grid.Column="1">
                         <TextBlock Text="Graphics" Style="{StaticResource SectionHeadingStyle}" />
-                        <TextBlock Text="Backend: Direct3D 11 (Xbox fixed)" Style="{StaticResource HelpfulTextStyle}"/>
+                        <ComboBox x:Name="graphicsApiBox" Header="Graphics API" SelectedIndex="0" SelectionChanged="SettingsSelectionChanged">
+                          <ComboBoxItem Content="Direct3D 11"/>
+                          <ComboBoxItem Content="Direct3D 12 (experimental)"/>
+                        </ComboBox>
+                        <TextBlock Text="Direct3D 12 is an experimental internal translation of Cemu's Vulkan command path. Mesa is not required or packaged." TextWrapping="Wrap" Style="{StaticResource HelpfulTextStyle}"/>
                         <ComboBox x:Name="vsyncBox" Header="VSync" SelectedIndex="1" SelectionChanged="SettingsSelectionChanged"><ComboBoxItem Content="Off"/><ComboBoxItem Content="On"/></ComboBox>
                         <CheckBox x:Name="asyncCompileCheck" Content="Async shader compile" Checked="SettingsCheckChanged" Unchecked="SettingsCheckChanged"/>
                         <CheckBox x:Name="gx2SyncCheck" Content="GX2DrawDone synchronization" Checked="SettingsCheckChanged" Unchecked="SettingsCheckChanged"/>

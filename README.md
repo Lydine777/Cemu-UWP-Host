@@ -1,6 +1,6 @@
 # Cemu UWP Host
 
-Cemu UWP Host is an experimental Universal Windows Platform front end for running a modified Cemu Wii U emulator on Windows and Xbox Series S in Developer Mode. The host embeds Cemu through the `CemuEmbed` C API and presents its native Direct3D 11 output through a XAML `SwapChainPanel`.
+Cemu UWP Host is an experimental Universal Windows Platform front end for running a modified Cemu Wii U emulator on Windows and Xbox Series S in Developer Mode. The host embeds Cemu through the `CemuEmbed` C API and presents its output through a XAML `SwapChainPanel`. Direct3D 11 remains the stable renderer; Direct3D 12 is available as an explicitly experimental in-tree backend.
 
 The primary development and validation target is **Xbox Series S**. Desktop x64 builds are useful for diagnostics, but they do not reproduce the Xbox memory limit, D3D11On12 driver behavior, storage broker, controller projection, or performance characteristics.
 
@@ -15,6 +15,7 @@ Implemented and currently available:
 
 - Embedded Cemu lifecycle without creating the desktop wxWidgets interface.
 - Native Direct3D 11 rendering inside the UWP application.
+- Experimental internal Vulkan-to-Direct3D 12 backend. It keeps Cemu's Vulkan renderer front-end and redirects its Vulkan dispatch into an in-process D3D12 translation layer. Mesa/Dozen is design reference only and is not a runtime or build dependency.
 - Xbox controller input, automatic player-one profile, selectable Wii U controller type, and in-game virtual mouse.
 - Installed-game library with base game, update, DLC, region, version, and Graphic Pack information.
 - Direct launch of WUD, WUX, ISO, WUA, WUHB, RPX, and ELF files.
@@ -195,7 +196,7 @@ The backend exposes a versioned `CemuEmbedSettings` structure. The Settings tab 
 - Audio backend, delay, channel modes, and volumes.
 - Skylanders portal, Disney Infinity base, and LEGO Dimensions Toy Pad emulation.
 
-Renderer/backend selection is intentionally host-owned and fixed to Direct3D 11 Feature Level 11.0 throughout the UWP renderer. Paths, accounts, Graphic Packs, controller profiles, and installed content use dedicated host APIs rather than the scalar settings structure. USB-device and startup-only changes apply after restarting the application.
+Renderer selection is host-owned. Direct3D 11 is the default; Direct3D 12 is marked experimental in Settings and takes effect after restarting the application. Paths, accounts, Graphic Packs, controller profiles, and installed content use dedicated host APIs rather than the scalar settings structure. USB-device and startup-only changes also apply after restarting the application.
 
 ## LEGO Dimensions Toy Pad
 
@@ -259,10 +260,11 @@ cmake -S . -B build-msvc-d3d11 `
   -A x64 `
   -DCEMU_UWP=ON `
   -DENABLE_D3D11=ON `
+  -DENABLE_D3D12=ON `
   -DSDL3_UWP_SOURCE_DIR="C:\path\to\SDL3-uwp"
 ```
 
-`CEMU_UWP=ON` already selects the embedded UWP configuration and Direct3D 11 path. `ENABLE_D3D11=ON` is retained to make the target renderer explicit. Initial configuration can take time while vcpkg builds static dependencies.
+`CEMU_UWP=ON` enables both the stable Direct3D 11 path and the experimental internal Vulkan-to-Direct3D 12 path. The Mesa tree used during its design is reference-only and is neither linked, copied nor packaged. Initial configuration can take time while vcpkg builds static dependencies.
 
 ### 2. Build the Cemu runtime
 
@@ -471,6 +473,7 @@ Do not compare a warm desktop cache directly with a cold Xbox cache. Keep game v
 - `Package.appxmanifest`: UWP identity, capabilities, and visual assets.
 - `Cemu/src/Cemu/CemuEmbed.h`: public embedded-runtime ABI in the adjacent modified Cemu tree.
 - `Cemu/src/Cafe/HW/Latte/Renderer/D3D11/`: custom D3D11 renderer and Series S policies.
+- `Cemu/src/Cafe/HW/Latte/Renderer/D3D12/`: experimental in-process translation layer used by the Vulkan renderer front-end.
 - `LICENSE`: Apache License 2.0 terms for this host repository.
 
 ## Security and legal notice

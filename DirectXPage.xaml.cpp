@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "DirectXPage.xaml.h"
 
+#include <windows.ui.xaml.media.dxinterop.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -32,6 +34,58 @@ constexpr wchar_t LocalInstallFolderName[] = L"GamesToInstall";
 constexpr wchar_t LocalGraphicPackMarkerName[] = L"cemu-graphic-pack-installed.txt";
 constexpr wchar_t ExternalFolderAccessMetadataPrefix[] = L"CemuUwpExternalRoot|";
 constexpr wchar_t PerformanceMetricsSettingName[] = L"PerformanceMetricsVisible";
+
+struct CompositionSwapChainAttachState
+{
+	CompositionSwapChainAttachState() : completed(CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS)) {}
+	~CompositionSwapChainAttachState() { if (completed) CloseHandle(completed); }
+	HANDLE completed{};
+	HRESULT result{E_FAIL};
+};
+
+int32_t SetCompositionSwapChain(void* userData, void* swapChain)
+{
+	if (!userData)
+		return static_cast<int32_t>(E_INVALIDARG);
+
+	auto panel = reinterpret_cast<SwapChainPanel^>(userData);
+	Microsoft::WRL::ComPtr<IDXGISwapChain> retainedSwapChain(
+		static_cast<IDXGISwapChain*>(swapChain));
+	auto attach = [panel, retainedSwapChain]() -> HRESULT
+	{
+		Microsoft::WRL::ComPtr<ISwapChainPanelNative> panelNative;
+		HRESULT hr = reinterpret_cast<IUnknown*>(panel)->QueryInterface(IID_PPV_ARGS(&panelNative));
+		if (FAILED(hr))
+			return hr;
+		return panelNative->SetSwapChain(retainedSwapChain.Get());
+	};
+
+	if (panel->Dispatcher->HasThreadAccess)
+		return static_cast<int32_t>(attach());
+
+	auto state = std::make_shared<CompositionSwapChainAttachState>();
+	if (!state->completed)
+		return static_cast<int32_t>(HRESULT_FROM_WIN32(GetLastError()));
+
+	try
+	{
+		panel->Dispatcher->RunAsync(CoreDispatcherPriority::High,
+			ref new DispatchedHandler([attach, state]()
+			{
+				state->result = attach();
+				SetEvent(state->completed);
+			}));
+	}
+	catch (Platform::Exception^ exception)
+	{
+		return static_cast<int32_t>(exception->HResult);
+	}
+
+	const DWORD waitResult = WaitForSingleObjectEx(state->completed, 10000, FALSE);
+	if (waitResult != WAIT_OBJECT_0)
+		return static_cast<int32_t>(waitResult == WAIT_TIMEOUT ? HRESULT_FROM_WIN32(ERROR_TIMEOUT) : HRESULT_FROM_WIN32(GetLastError()));
+	return static_cast<int32_t>(state->result);
+}
 
 Platform::String^ WinRtString(const wchar_t* value)
 {
@@ -468,7 +522,7 @@ void DirectXPage::InitializeEmulator(float width, float height)
 	// Creating the template swap chain in the page constructor gives it a 1x1
 	// back buffer because XAML has not performed layout yet. Hand it to Cemu
 	// only after the first real SizeChanged event.
-	// Cemu owns all D3D11 rendering once the swap chain is attached. Avoid
+	// Cemu owns rendering once the Direct3D interoperability swap chain is attached. Avoid
 	// allocating the template's unused D2D/DWrite/WIC and depth resources.
 	m_deviceResources = std::make_shared<DX::DeviceResources>(true);
 	m_deviceResources->SetSwapChainPanel(emulatorSurface);
@@ -493,7 +547,10 @@ void DirectXPage::InitializeEmulator(float width, float height)
 				m_deviceResources->GetD3DDevice(),
 				m_deviceResources->GetD3DDeviceContext(),
 					m_deviceResources->GetSwapChain(),
-					nullptr
+					nullptr,
+					reinterpret_cast<IInspectable*>(emulatorSurface),
+					&SetCompositionSwapChain,
+					reinterpret_cast<IInspectable*>(emulatorSurface)
 				};
 				m_deviceResources->ReleaseSizeDependentResourcesForExternalRenderer();
 				m_main = std::make_shared<Cemu_UWP_HostMain>(
@@ -508,7 +565,7 @@ void DirectXPage::InitializeEmulator(float width, float height)
 			});
 			if (!m_main->Start())
 			{
-				AppendError("Failed to initialize Cemu or the Direct3D 11 backend.");
+				AppendError("Failed to initialize Cemu or the selected Direct3D backend.");
 				launchStatus->Text = "Failed to initialize the emulator";
 				m_main.reset();
 			}
@@ -538,6 +595,27 @@ DirectXPage::~DirectXPage()
 
 void DirectXPage::OnRendering(Platform::Object^, Platform::Object^)
 {
+	if (m_deviceResources && FAILED(
+		m_deviceResources->GetD3DDevice()->GetDeviceRemovedReason()))
+	{
+		// The core stops its GPU thread as soon as it observes removal. Recreate
+		// the host objects here on the XAML thread and republish the complete
+		// surface so a subsequent title launch never reuses the removed device.
+		m_deviceResources->HandleDeviceLost();
+		m_deviceResources->ReleaseSizeDependentResourcesForExternalRenderer();
+		if (m_main)
+		{
+			const CemuEmbedD3D11Surface replacement{
+				sizeof(CemuEmbedD3D11Surface), CEMU_EMBED_D3D11_SURFACE_VERSION,
+				m_deviceResources->GetD3DDevice(),
+				m_deviceResources->GetD3DDeviceContext(),
+				m_deviceResources->GetSwapChain(), nullptr,
+				reinterpret_cast<IInspectable*>(emulatorSurface),
+				&SetCompositionSwapChain,
+				reinterpret_cast<IInspectable*>(emulatorSurface) };
+			m_main->ReplaceD3D11Surface(replacement);
+		}
+	}
 	// Xbox can recreate its controller-driven system cursor after focus changes
 	// or an error dialog. Reassert the hidden cursor while a title owns the
 	// presentation, but keep it available for the navigable library.
@@ -1979,6 +2057,9 @@ void DirectXPage::LoadSettings()
 	select(cpuModeBox, settings.cpu_mode, 4);
 	select(consoleLanguageBox, settings.console_language, 11);
 	select(emulatedControllerBox, settings.emulated_controller_type, 3);
+	select(graphicsApiBox, settings.graphics_api == 4 ? 1 : 0, 1);
+	rendererMetricsText->Text = settings.graphics_api == 4 ?
+		"Renderer         D3D12 experimental" : "Renderer         D3D11";
 	select(vsyncBox, settings.vsync == 0 ? 0 : 1, 1);
 	bootSoundCheck->IsChecked = settings.play_boot_sound != 0;
 	disableScreensaverCheck->IsChecked = settings.disable_screensaver != 0;
@@ -2067,6 +2148,7 @@ void DirectXPage::SaveSettings()
 	settings.cpu_mode = cpuModeBox->SelectedIndex;
 	settings.console_language = consoleLanguageBox->SelectedIndex;
 	settings.emulated_controller_type = emulatedControllerBox->SelectedIndex;
+	settings.graphics_api = graphicsApiBox->SelectedIndex == 1 ? 4 : 3;
 	settings.vsync = vsyncBox->SelectedIndex;
 	settings.play_boot_sound = checked(bootSoundCheck);
 	settings.disable_screensaver = checked(disableScreensaverCheck);
@@ -2107,7 +2189,7 @@ void DirectXPage::SaveSettings()
 	}
 	if (m_gamepad)
 		TryConfigureDefaultGamepad();
-	settingsStatus->Text = "Settings saved automatically. The player 1 Wii U controller is active; USB and startup options apply after restarting the app.";
+	settingsStatus->Text = "Settings saved automatically. Graphics API, USB and other startup options apply after restarting the app.";
 }
 
 void DirectXPage::ClearErrors_Click(Platform::Object^, RoutedEventArgs^)
@@ -2575,6 +2657,10 @@ void DirectXPage::OnBrokeredProgress(uint64_t bytesCopied, uint64_t totalBytes, 
 				externalLoadingProgress->Value = 100.0;
 				externalLoadingPercent->Text = "100%";
 				externalLoadingDetail->Text = text;
+				// The brokered-storage phase is complete. Remove the XAML overlay now
+				// so Cemu's native shader-cache progress, rendered into the underlying
+				// SwapChainPanel, remains visible while title startup continues.
+				SetExternalLoadingVisible(false);
 			})));
 		return;
 	}

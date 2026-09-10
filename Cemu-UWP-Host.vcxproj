@@ -125,7 +125,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <Link>
-      <AdditionalDependencies>d2d1.lib; d3d11.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d2d1.lib; d3d11.lib; d3d12.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories); $(VCInstallDir)\lib\store\arm64; $(VCInstallDir)\lib\arm64</AdditionalLibraryDirectories>
     </Link>
     <ClCompile>
@@ -139,7 +139,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <Link>
-      <AdditionalDependencies>d2d1.lib; d3d11.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d2d1.lib; d3d11.lib; d3d12.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories); $(VCInstallDir)\lib\store\arm64; $(VCInstallDir)\lib\arm64</AdditionalLibraryDirectories>
     </Link>
     <ClCompile>
@@ -153,7 +153,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Link>
-      <AdditionalDependencies>d2d1.lib; d3d11.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d2d1.lib; d3d11.lib; d3d12.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories); $(VCInstallDir)\lib\store; $(VCInstallDir)\lib</AdditionalLibraryDirectories>
     </Link>
     <ClCompile>
@@ -167,7 +167,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Link>
-      <AdditionalDependencies>d2d1.lib; d3d11.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d2d1.lib; d3d11.lib; d3d12.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories); $(VCInstallDir)\lib\store; $(VCInstallDir)\lib</AdditionalLibraryDirectories>
     </Link>
     <ClCompile>
@@ -181,7 +181,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Link>
-      <AdditionalDependencies>$(CemuBuildDir)\$(CemuBinaryName).lib; d2d1.lib; d3d11.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CemuBuildDir)\$(CemuBinaryName).lib; d2d1.lib; d3d11.lib; d3d12.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CemuBuildDir); %(AdditionalLibraryDirectories); $(VCInstallDir)\lib\store\amd64; $(VCInstallDir)\lib\amd64</AdditionalLibraryDirectories>
       <!-- Series S traces reached the guard page while newbe_xs.dll compiled a
            D3D11On12 pipeline. Reserve 128 MiB of
@@ -199,7 +199,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Link>
-      <AdditionalDependencies>$(CemuBuildDir)\$(CemuBinaryName).lib; d2d1.lib; d3d11.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CemuBuildDir)\$(CemuBinaryName).lib; d2d1.lib; d3d11.lib; d3d12.lib; dxgi.lib; windowscodecs.lib; dwrite.lib; %(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CemuBuildDir); %(AdditionalLibraryDirectories); $(VCInstallDir)\lib\store\amd64; $(VCInstallDir)\lib\amd64</AdditionalLibraryDirectories>
       <!-- Keep the Xbox driver compiler away from the observed stack guard
            page while preserving the existing committed-memory limits. -->
@@ -282,6 +282,10 @@
       <Link>$(CemuBinaryName).dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Include="$(CemuBuildDir)\$(CemuBinaryName).pdb" Condition="Exists('$(CemuBuildDir)\$(CemuBinaryName).pdb')">
+      <Link>$(CemuBinaryName).pdb</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Cemu resolves runtime data relative to CemuEmbedConfig::data_path.
          In the UWP host that path is Package::InstalledLocation, therefore
          the resource tree and built-in game profiles must be AppX content.

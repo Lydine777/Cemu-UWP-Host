@@ -9,13 +9,13 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-    # 1. 下载你的 UWP 宿主项目
+    # 1. 下载 UWP 宿主项目
     - name: Checkout Cemu UWP Host
       uses: actions/checkout@v4
       with:
         path: Cemu-UWP-Host
 
-    # 2. 下载官方 Cemu 核心项目
+    # 2. 下载官方 Cemu 核心项目（必须包含子模块）
     - name: Checkout Cemu Core
       uses: actions/checkout@v4
       with:
@@ -34,26 +34,42 @@ jobs:
         .\vcpkg\bootstrap-vcpkg.bat
         .\vcpkg\vcpkg integrate install
 
-    # 5. 编译 Cemu 核心 (这一步非常耗时，可能需要 20-40 分钟)
+    # 5. 编译 Cemu 核心（修正了路径错误，加入 BUILD_SHARED_LIBS 参数确保生成 DLL）
     - name: Build Cemu Core
       working-directory: Cemu
       run: |
-        cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
+        cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
         cmake --build build --config Release
 
-    # 6. 把编译好的 Cemu_release.dll 放到 UWP 宿主需要的位置
+    # 6. 自动寻找并复制核心 DLL 到宿主项目需要的位置
     - name: Prepare Cemu DLLs for UWP Host
       run: |
         New-Item -ItemType Directory -Force -Path Cemu\bin
         $dll = Get-ChildItem -Path Cemu -Filter "Cemu_release.dll" -Recurse | Select-Object -First 1
-        if ($dll) {
+        if (-not $dll) {
+          $dll = Get-ChildItem -Path Cemu -Filter "Cemu.dll" -Recurse | Select-Object -First 1
+          if ($dll) {
+            Copy-Item -Path $dll.FullName -Destination Cemu\bin\Cemu_release.dll
+            Write-Host "Found Cemu.dll and renamed to Cemu_release.dll"
+          } else {
+            Write-Error "Cemu_release.dll or Cemu.dll not found! Build might have failed."
+          }
+        } else {
           Copy-Item -Path $dll.FullName -Destination Cemu\bin\
           Write-Host "Successfully copied Cemu_release.dll"
-        } else {
-          Write-Error "Cemu_release.dll not found! Build might have failed or output path is different."
         }
 
     # 7. 编译 UWP 宿主项目
     - name: Build UWP app
       working-directory: Cemu-UWP-Host
       run: msbuild Cemu-UWP-Host.slnx /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false /m
+
+    # 8. 上传最终产物
+    - name: Upload MSIX/AppX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Cemu-UWP-Package
+        path: |
+          **/AppPackages/
+          **/*.msix
+          **/*.appx

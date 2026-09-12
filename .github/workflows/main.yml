@@ -2,36 +2,58 @@ name: Build Cemu UWP
 
 on:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-    - name: Checkout repository
+    # 1. 下载你的 UWP 宿主项目
+    - name: Checkout Cemu UWP Host
       uses: actions/checkout@v4
       with:
+        path: Cemu-UWP-Host
+
+    # 2. 下载官方 Cemu 核心项目
+    - name: Checkout Cemu Core
+      uses: actions/checkout@v4
+      with:
+        repository: cemu-project/Cemu
+        path: Cemu
         submodules: recursive
 
+    # 3. 安装编译工具
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    - name: Setup NuGet
-      uses: nuget/setup-nuget@v2
+    # 4. 安装依赖管理器 vcpkg
+    - name: Setup vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        .\vcpkg\bootstrap-vcpkg.bat
+        .\vcpkg\vcpkg integrate install
 
-    - name: Restore NuGet packages
-      run: nuget restore Cemu-UWP-Host.slnx
+    # 5. 编译 Cemu 核心 (这一步非常耗时，可能需要 20-40 分钟)
+    - name: Build Cemu Core
+      working-directory: Cemu
+      run: |
+        cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
+        cmake --build build --config Release
 
+    # 6. 把编译好的 Cemu_release.dll 放到 UWP 宿主需要的位置
+    - name: Prepare Cemu DLLs for UWP Host
+      run: |
+        New-Item -ItemType Directory -Force -Path Cemu\bin
+        $dll = Get-ChildItem -Path Cemu -Filter "Cemu_release.dll" -Recurse | Select-Object -First 1
+        if ($dll) {
+          Copy-Item -Path $dll.FullName -Destination Cemu\bin\
+          Write-Host "Successfully copied Cemu_release.dll"
+        } else {
+          Write-Error "Cemu_release.dll not found! Build might have failed or output path is different."
+        }
+
+    # 7. 编译 UWP 宿主项目
     - name: Build UWP app
+      working-directory: Cemu-UWP-Host
       run: msbuild Cemu-UWP-Host.slnx /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false /m
-
-    - name: Upload MSIX/AppX artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Cemu-UWP-Package
-        path: |
-          **/AppPackages/
-          **/*.msix
-          **/*.appx

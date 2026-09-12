@@ -22,11 +22,10 @@ jobs:
       uses: nuget/setup-nuget@v2
 
     - name: Restore NuGet packages
-      run: nuget restore Cemu-UWP-Host.sln
-      # 注意：如果项目根目录没有 .sln 文件，这里会报错。你需要去仓库 Code 页面看看主文件名是什么。
+      run: nuget restore Cemu-UWP-Host.slnx
 
     - name: Build UWP app
-      run: msbuild Cemu-UWP-Host.sln /p:Configuration=Release /p:Platform=x64 /m
+      run: msbuild Cemu-UWP-Host.slnx /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false /m
 
     - name: Upload MSIX/AppX artifact
       uses: actions/upload-artifact@v4
@@ -34,6 +33,5 @@ jobs:
         name: Cemu-UWP-Package
         path: |
           **/AppPackages/
-          **/bin/x64/Release/
           **/*.msix
           **/*.appx
